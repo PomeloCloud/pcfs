@@ -1,0 +1,28 @@
+syntax = "proto3";
+package client;
+
+message Block {
+    uint64 group = 1;
+    bytes hash = 2;
+    bytes key = 3;
+}
+
+message FileMeta {
+    string name = 1;
+    uint64 size  = 2;
+    uint64 last_Modified = 3;
+    uint64 created_at = 4;
+    bytes key = 5;
+    repeated Block blocks = 6;
+}
+
+message Directory {
+    string name = 1;
+    bytes key = 2;
+    repeated bytes files = 3;
+}
+
+message Volume {
+    bytes key = 1;
+    bytes root_dir = 2;
+}
