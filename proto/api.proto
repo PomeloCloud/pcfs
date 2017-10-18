@@ -2,9 +2,9 @@ syntax = "proto3";
 package client;
 
 message Block {
-    uint64 group = 1;
     bytes hash = 2;
     bytes key = 3;
+    repeated uint64 hosts = 1;
 }
 
 message FileMeta {
@@ -25,4 +25,11 @@ message Directory {
 message Volume {
     bytes key = 1;
     bytes root_dir = 2;
+}
+
+message HostStash {
+    uint64 host_id = 1;
+    uint64 capacity = 2;
+    uint64 used = 3;
+    uint64 owner = 4;
 }
