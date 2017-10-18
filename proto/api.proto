@@ -12,8 +12,9 @@ message FileMeta {
     uint64 size  = 2;
     uint64 last_Modified = 3;
     uint64 created_at = 4;
-    bytes key = 5;
-    repeated Block blocks = 6;
+    uint64 lock_time = 5;
+    bytes key = 6;
+    repeated Block blocks = 7;
 }
 
 message Directory {
@@ -23,8 +24,10 @@ message Directory {
 }
 
 message Volume {
-    bytes key = 1;
-    bytes root_dir = 2;
+    string name = 1;
+    bytes key = 2;
+    uint32 replications = 3;
+    bytes root_dir = 4;
 }
 
 message HostStash {
