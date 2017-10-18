@@ -1,4 +1,4 @@
-package contracts
+package server
 
 // PCFS contracts run on BFTRaft
 // Represent as functions have byte array as input and byte array as output

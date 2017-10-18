@@ -1,11 +1,9 @@
-package contracts
+package server
 
 import (
-	pb "github.com/PomeloCloud/pcfs/proto"
+	bft "github.com/PomeloCloud/BFTRaft4go/server"
 )
 
-// Beta group contracts
-
-func (s *s.BFTRaftServer) NewVolume(name string, replications uint32, blockSize uint32) *pb.Volume {
-	return nil
+type PCFSServer struct {
+	BFTRaft *bft.BFTRaftServer
 }
