@@ -2,7 +2,8 @@ syntax = "proto3";
 package client;
 
 service PCFS {
-    rpc GetBlock(GetBlockRequest) returns (GetBlockResponse) {}
+    rpc GetBlock(GetBlockRequest) returns (BlockData) {}
+    rpc GetFileMeta(GetFileRequest) returns (FileMeta) {}
     rpc AppendToBlock(AppendToBlockRequest) returns (WriteResult) {}
     rpc CreateBlock(CreateBlockRequest) returns (WriteResult) {}
     rpc DeleteBlock(DeleteBlockRequest) returns (WriteResult) {}
@@ -63,10 +64,6 @@ message GetBlockRequest {
     bytes file = 3;
 }
 
-message GetBlockResponse {
-    BlockData data = 1;
-}
-
 message AppendToBlockRequest {
     uint64 group = 1;
     uint64 index = 2;
@@ -84,6 +81,11 @@ message CreateBlockRequest {
     uint64 index = 2;
     bytes file = 4;
     bytes signature = 5;
+}
+
+message GetFileRequest {
+    uint64 group = 1;
+    bytes file = 2;
 }
 
 message Node {

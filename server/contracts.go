@@ -276,6 +276,7 @@ func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byt
 	s.PendingBlocks.Delete(cacheKey)
 	// update file meta
 	newBlock := &pb.Block{Hosts: hosts}
+	var fileRes *pb.FileMeta
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
 		if file, err := GetFile(txn, group, contract.File); err != nil {
 			blocks := len(file.Blocks)
@@ -286,13 +287,15 @@ func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byt
 			file.LastModified = contract.ClientTime
 			file.Size = uint64(len(file.Blocks)) * uint64(file.BlockSize)
 			SetFile(txn, group, file)
+			fileRes = file
+			return nil
 		} else {
 			return err
 		}
-		return nil
 	}); err == nil {
 		log.Println("confirmed new block succeed")
-		return []byte{1}
+		resData, _ := proto.Marshal(fileRes)
+		return resData
 	} else {
 		log.Println("failed to confirm new block")
 		return []byte{0}
