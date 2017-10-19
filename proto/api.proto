@@ -16,9 +16,8 @@ message Block {
 message FileMeta {
     string name = 1;
     uint64 size  = 2;
-    uint64 last_Modified = 3;
+    uint64 last_modified = 3;
     uint64 created_at = 4;
-    uint64 lock_time = 5;
     uint32 block_size = 6;
     bytes key = 7;
     repeated Block blocks = 8;
@@ -87,10 +86,11 @@ message ReleaseFileWriteLockContract {
     bytes key = 1;
 }
 
-message NewFileContract {
-    string name = 1;
-    bytes dir = 2;
-    bytes volume = 3;
+message TouchFileContract {
+    uint64 client_time = 1;
+    string name = 2;
+    bytes dir = 3;
+    bytes volume = 4;
 }
 
 message FileWriteLock {

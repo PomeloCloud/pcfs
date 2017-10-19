@@ -45,7 +45,7 @@ func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
 	if volume.BlockSize > _10MB {
 		volume.BlockSize = _10MB
 	}
-	dbKey := append(bft.ComposeKeyPrefix(group, VOLUMES), key...)
+	dbKey := DBKey(group, VOLUMES, key)
 	rootDirDbKey := append(bft.ComposeKeyPrefix(group, DIRECTORY), key...)
 	rootDir := &pb.Directory{
 		Key: key, Files: [][]byte{},
@@ -180,3 +180,40 @@ func (s *PCFSServer) ReleaseFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []by
 		return []byte{0}
 	}
 }
+
+func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
+	group := entry.Command.Group
+	contract := &pb.TouchFileContract{}
+	if err := proto.Unmarshal(*arg, contract); err != nil {
+		log.Println("cannode decode touch file contract:", err)
+		return []byte{0}
+	}
+	fileKey := FileKey(contract.Volume, contract.Dir, entry.Index)
+	file := &pb.FileMeta{
+		Name: contract.Name,
+		Size: 0,
+		LastModified: contract.ClientTime,
+		CreatedAt: contract.ClientTime,
+		Key: fileKey,
+		Blocks: []*pb.Block{},
+	}
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		if vol, err := s.GetVolume(txn, group, contract.Volume); err == nil {
+			file.BlockSize = vol.BlockSize
+		} else {
+			return errors.New("cannot find volume for touch file")
+		}
+		if _, err := s.GetFile(txn, group, fileKey); err == badger.ErrKeyNotFound {
+			s.SetFile(txn, group, file)
+		}
+		return nil
+	}); err == nil {
+		log.Println("touch file succeed")
+		return []byte{1}
+	} else {
+		log.Println("cannot touch file", err)
+		return []byte{0}
+	}
+}
+
+

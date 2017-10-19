@@ -6,10 +6,16 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/golang/protobuf/proto"
 	"log"
+	"github.com/PomeloCloud/BFTRaft4go/utils"
 )
 
 func DBKey(group uint64, t uint32, key []byte) []byte {
 	return append(bft.ComposeKeyPrefix(group, t), key...)
+}
+
+func FileKey(volume []byte, path []byte, index uint64) []byte {
+	hash, _ := utils.SHA1Hash(append(append(volume, path...), utils.U64Bytes(index)...))
+	return hash
 }
 
 func (s *PCFSServer) GetDirectory(txn *badger.Txn, group uint64, key []byte) (*pb.Directory, error) {
@@ -81,12 +87,12 @@ func (s *PCFSServer) GetFile(txn *badger.Txn, group uint64, key []byte) (*pb.Fil
 	dbkey := DBKey(group, FILE_META, key)
 	fileItem, err := txn.Get(dbkey)
 	if err == nil {
-		log.Println("cannot get file file item:", err)
+		log.Println("cannot get file item:", err)
 		return nil, err
 	}
 	fileValue, err := fileItem.Value()
 	if err == nil {
-		log.Println("cannot get file file value:", err)
+		log.Println("cannot get file value:", err)
 		return nil, err
 	}
 	file := &pb.FileMeta{}
@@ -105,4 +111,24 @@ func (s *PCFSServer) SetFile(txn *badger.Txn, group uint64, file *pb.FileMeta) e
 		return err
 	}
 	return txn.Set(dbKey, data, 0x00)
+}
+
+func (s *PCFSServer) GetVolume(txn *badger.Txn, group uint64, key []byte) (*pb.Volume, error) {
+	dbkey := DBKey(group, VOLUMES, key)
+	volItem, err := txn.Get(dbkey)
+	if err == nil {
+		log.Println("cannot get vol item:", err)
+		return nil, err
+	}
+	volValue, err := volItem.Value()
+	if err == nil {
+		log.Println("cannot get vol value:", err)
+		return nil, err
+	}
+	vol := &pb.Volume{}
+	if err := proto.Unmarshal(volValue, vol); err != nil {
+		log.Println("cannot decode vol:", err)
+		return nil, err
+	}
+	return vol, nil
 }
