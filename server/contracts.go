@@ -10,6 +10,8 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/golang/protobuf/proto"
 	"log"
+	"fmt"
+	"github.com/patrickmn/go-cache"
 )
 
 // Beta group contracts
@@ -190,12 +192,12 @@ func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
 	}
 	fileKey := FileKey(contract.Volume, contract.Dir, entry.Index)
 	file := &pb.FileMeta{
-		Name: contract.Name,
-		Size: 0,
+		Name:         contract.Name,
+		Size:         0,
 		LastModified: contract.ClientTime,
-		CreatedAt: contract.ClientTime,
-		Key: fileKey,
-		Blocks: []*pb.Block{},
+		CreatedAt:    contract.ClientTime,
+		Key:          fileKey,
+		Blocks:       []*pb.Block{},
 	}
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
 		if vol, err := s.GetVolume(txn, group, contract.Volume); err == nil {
@@ -216,4 +218,81 @@ func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
 	}
 }
 
-
+// Only block created by a signed client message can be confirmed and marked on the ledger
+// Clients can pickup any servers it wanted by consulting beta group for host stash space remained
+// Setback: client cannot verify whether the data is modified, only pick the majority
+// Setback: size of the file can only be calculated by multiply it's block count and block size
+// invoked when new block created on storage servers
+// TODO: find a way to verify that stash nodes really occupied those spaces
+func (s *PCFSServer) ConfirmBlock(arg *[]byte, entry *rpb.LogEntry) []byte {
+	group := entry.Command.Group
+	contract := &pb.ConfirmBlockContract{}
+	if err := proto.Unmarshal(*arg, contract); err != nil {
+		log.Println("cannode decode confirm block contract:", err)
+		return []byte{0}
+	}
+	// TODO: verify client signature
+	cacheKey := fmt.Sprint(group, "-", contract.Index, "-", contract.File)
+	logI, cached := s.PendingBlocks.Get(cacheKey)
+	if !cached {
+		logI = &map[uint64]bool{contract.NodeId: true}
+		s.PendingBlocks.Set(cacheKey, logI, cache.DefaultExpiration)
+	} else {
+		l := logI.(*map[uint64]bool)
+		(*l)[contract.NodeId] = true
+		s.PendingBlocks.Set(cacheKey, l, cache.DefaultExpiration)
+	}
+	return []byte{1}
+}
+// invoked by client to commit confirmed block that will put into file meta data
+func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byte {
+	group := entry.Command.Group
+	contract := &pb.ConfirmBlockCreationContract{}
+	if err := proto.Unmarshal(*arg, contract); err != nil {
+		log.Println("cannode decode confirm block creation contract:", err)
+		return []byte{0}
+	}
+	cacheKey := fmt.Sprint(group, "-", contract.Index, "-", contract.File)
+	logI, cached := s.PendingBlocks.Get(cacheKey)
+	if !cached {
+		log.Println("cannot found the block for commit")
+		return []byte{0}
+	}
+	l := logI.(*map[uint64]bool)
+	hosts := []uint64{}
+	// check all replication nodes confirmed
+	for _, nodeId := range contract.NodeIds {
+		_, confirmed := (*l)[nodeId]
+		if !confirmed {
+			log.Println("not all replication confirmed:", nodeId)
+			return []byte{0}
+		} else {
+			hosts = append(hosts, nodeId)
+		}
+	}
+	// remove cached
+	s.PendingBlocks.Delete(cacheKey)
+	// update file meta
+	newBlock := &pb.Block{Hosts: hosts}
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		if file, err := s.GetFile(txn, group, contract.File); err != nil {
+			blocks := len(file.Blocks)
+			if uint64(blocks) != contract.Index {
+				return errors.New("new block index not match next index")
+			}
+			file.Blocks = append(file.Blocks, newBlock)
+			file.LastModified = contract.ClientTime
+			file.Size = uint64(len(file.Blocks)) * uint64(file.BlockSize)
+			s.SetFile(txn, group, file)
+		} else {
+			return err
+		}
+		return nil
+	}); err == nil {
+		log.Println("confirmed new block succeed")
+		return []byte{1}
+	} else {
+		log.Println("failed to confirm new block")
+		return []byte{0}
+	}
+}
