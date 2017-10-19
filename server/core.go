@@ -6,6 +6,6 @@ import (
 )
 
 type PCFSServer struct {
-	BFTRaft *bft.BFTRaftServer
+	BFTRaft       *bft.BFTRaftServer
 	PendingBlocks *cache.Cache
 }

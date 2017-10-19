@@ -58,11 +58,13 @@ message OpenRequest {
 }
 
 message GetBlockRequest {
-    bytes key = 1;
+    uint64 group = 1;
+    uint64 index = 2;
+    bytes file = 3;
 }
 
 message GetBlockResponse {
-    bytes data = 1;
+    BlockData data = 1;
 }
 
 message AppendToBlockRequest {

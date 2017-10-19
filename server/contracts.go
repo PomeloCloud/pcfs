@@ -3,15 +3,15 @@ package server
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	rpb "github.com/PomeloCloud/BFTRaft4go/proto/server"
 	bft "github.com/PomeloCloud/BFTRaft4go/server"
 	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/dgraph-io/badger"
 	"github.com/golang/protobuf/proto"
-	"log"
-	"fmt"
 	"github.com/patrickmn/go-cache"
+	"log"
 )
 
 // Beta group contracts
@@ -24,6 +24,7 @@ const (
 	DIRECTORY = 2
 	FILE_LOCK = 3
 	FILE_META = 4
+	BLOCKS    = 5
 )
 
 func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
@@ -96,7 +97,7 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 	dir.Files = [][]byte{}
 	newDirToken := append([]byte{1}, dir.Key...)
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		parentDir, err := s.GetDirectory(txn, group, contract.ParentDir)
+		parentDir, err := GetDirectory(txn, group, contract.ParentDir)
 		if err != nil {
 			return err
 		}
@@ -107,10 +108,10 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 			}
 		}
 		parentDir.Files = append(parentDir.Files, newDirToken)
-		if err := s.SetDirectory(txn, group, dir); err != nil {
+		if err := SetDirectory(txn, group, dir); err != nil {
 			return err
 		}
-		if err := s.SetDirectory(txn, group, parentDir); err != nil {
+		if err := SetDirectory(txn, group, parentDir); err != nil {
 			return err
 		}
 		return nil
@@ -134,16 +135,16 @@ func (s *PCFSServer) AcquireFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []by
 		Group: group, Key: contract.Key,
 	}
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		if _, err := s.GetFile(txn, group, contract.Key); err != nil {
+		if _, err := GetFile(txn, group, contract.Key); err != nil {
 			return err
 		}
-		if lock, err := s.GetWriteLock(txn, group, contract.Key); err == badger.ErrKeyNotFound {
-			s.SetWriteLock(txn, group, newLock)
+		if lock, err := GetWriteLock(txn, group, contract.Key); err == badger.ErrKeyNotFound {
+			SetWriteLock(txn, group, newLock)
 		} else if err == nil {
 			if lock.Owner != entry.Command.ClientId {
 				return errors.New("lock already acquired")
 			} else {
-				s.SetWriteLock(txn, group, newLock)
+				SetWriteLock(txn, group, newLock)
 			}
 		} else {
 			return err
@@ -166,7 +167,7 @@ func (s *PCFSServer) ReleaseFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []by
 		return []byte{0}
 	}
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		if lock, err := s.GetWriteLock(txn, group, contract.Key); err == badger.ErrKeyNotFound {
+		if lock, err := GetWriteLock(txn, group, contract.Key); err == badger.ErrKeyNotFound {
 			return errors.New("cannot find the lock")
 		} else if err == nil {
 			return s.ReleaseWriteLock(txn, group, lock)
@@ -200,13 +201,13 @@ func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
 		Blocks:       []*pb.Block{},
 	}
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		if vol, err := s.GetVolume(txn, group, contract.Volume); err == nil {
+		if vol, err := GetVolume(txn, group, contract.Volume); err == nil {
 			file.BlockSize = vol.BlockSize
 		} else {
 			return errors.New("cannot find volume for touch file")
 		}
-		if _, err := s.GetFile(txn, group, fileKey); err == badger.ErrKeyNotFound {
-			s.SetFile(txn, group, file)
+		if _, err := GetFile(txn, group, fileKey); err == badger.ErrKeyNotFound {
+			SetFile(txn, group, file)
 		}
 		return nil
 	}); err == nil {
@@ -244,6 +245,7 @@ func (s *PCFSServer) ConfirmBlock(arg *[]byte, entry *rpb.LogEntry) []byte {
 	}
 	return []byte{1}
 }
+
 // invoked by client to commit confirmed block that will put into file meta data
 func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
@@ -275,7 +277,7 @@ func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byt
 	// update file meta
 	newBlock := &pb.Block{Hosts: hosts}
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		if file, err := s.GetFile(txn, group, contract.File); err != nil {
+		if file, err := GetFile(txn, group, contract.File); err != nil {
 			blocks := len(file.Blocks)
 			if uint64(blocks) != contract.Index {
 				return errors.New("new block index not match next index")
@@ -283,7 +285,7 @@ func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byt
 			file.Blocks = append(file.Blocks, newBlock)
 			file.LastModified = contract.ClientTime
 			file.Size = uint64(len(file.Blocks)) * uint64(file.BlockSize)
-			s.SetFile(txn, group, file)
+			SetFile(txn, group, file)
 		} else {
 			return err
 		}
