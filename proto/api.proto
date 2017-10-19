@@ -73,4 +73,9 @@ message WriteResult {
     bytes key = 3;
 }
 
+message NewDirectoryContract {
+    bytes parent_dir = 1;
+    Directory dir = 3;
+}
+
 message Nothing {}

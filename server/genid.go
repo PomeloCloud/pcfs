@@ -1,8 +1,8 @@
 package server
 
 import (
-	"crypto/sha1"
 	"crypto/rand"
+	"crypto/sha1"
 )
 
 func IdFromName(name string) []byte {
