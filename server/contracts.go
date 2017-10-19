@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"errors"
 	rpb "github.com/PomeloCloud/BFTRaft4go/proto/server"
 	bft "github.com/PomeloCloud/BFTRaft4go/server"
@@ -9,7 +10,6 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/golang/protobuf/proto"
 	"log"
-	"bytes"
 )
 
 // Beta group contracts
@@ -20,6 +20,8 @@ const _1KB = uint32(1024)
 const (
 	VOLUMES   = 1
 	DIRECTORY = 2
+	FILE_LOCK = 3
+	FILE_META = 4
 )
 
 func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
@@ -82,17 +84,17 @@ func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
 
 func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
-	newDir := &pb.NewDirectoryContract{}
-	if err := proto.Unmarshal(*arg, newDir); err != nil {
-		log.Println("cannot decode new dir")
+	contract := &pb.NewDirectoryContract{}
+	if err := proto.Unmarshal(*arg, contract); err != nil {
+		log.Println("cannot decode new dir contract:", err)
 		return []byte{0}
 	}
-	dir := newDir.Dir
-	dir.Key, _ = utils.SHA1Hash(append(newDir.ParentDir, entry.Hash...))
+	dir := contract.Dir
+	dir.Key, _ = utils.SHA1Hash(append(contract.ParentDir, entry.Hash...))
 	dir.Files = [][]byte{}
 	newDirToken := append([]byte{1}, dir.Key...)
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		parentDir, err := s.GetDirectory(txn, group, newDir.ParentDir)
+		parentDir, err := s.GetDirectory(txn, group, contract.ParentDir)
 		if err != nil {
 			return err
 		}
@@ -106,9 +108,6 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 		if err := s.SetDirectory(txn, group, dir); err != nil {
 			return err
 		}
-		if err := s.SetDirectory(txn, group, dir); err != nil {
-			return err
-		}
 		if err := s.SetDirectory(txn, group, parentDir); err != nil {
 			return err
 		}
@@ -118,6 +117,66 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 		return []byte{1}
 	} else {
 		log.Println("cannot create dir:", err)
+		return []byte{0}
+	}
+}
+
+func (s *PCFSServer) AcquireFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []byte {
+	group := entry.Command.Group
+	contract := &pb.AcquireFileWriteLockContract{}
+	if err := proto.Unmarshal(*arg, contract); err != nil {
+		log.Println("cannode decode lock contract:", err)
+		return []byte{0}
+	}
+	newLock := &pb.FileWriteLock{
+		Group: group, Key: contract.Key,
+	}
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		if _, err := s.GetFile(txn, group, contract.Key); err != nil {
+			return err
+		}
+		if lock, err := s.GetWriteLock(txn, group, contract.Key); err == badger.ErrKeyNotFound {
+			s.SetWriteLock(txn, group, newLock)
+		} else if err == nil {
+			if lock.Owner != entry.Command.ClientId {
+				return errors.New("lock already acquired")
+			} else {
+				s.SetWriteLock(txn, group, newLock)
+			}
+		} else {
+			return err
+		}
+		return nil
+	}); err == nil {
+		log.Println("file lock acuqired")
+		return []byte{1}
+	} else {
+		log.Println("cannot acquire file lock:", err)
+		return []byte{0}
+	}
+}
+
+func (s *PCFSServer) ReleaseFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []byte {
+	group := entry.Command.Group
+	contract := &pb.ReleaseFileWriteLockContract{}
+	if err := proto.Unmarshal(*arg, contract); err != nil {
+		log.Println("cannode decode lock re contract:", err)
+		return []byte{0}
+	}
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		if lock, err := s.GetWriteLock(txn, group, contract.Key); err == badger.ErrKeyNotFound {
+			return errors.New("cannot find the lock")
+		} else if err == nil {
+			return s.ReleaseWriteLock(txn, group, lock)
+		} else {
+			return err
+		}
+		return nil
+	}); err == nil {
+		log.Println("lock released")
+		return []byte{1}
+	} else {
+		log.Println("cannot release lock:", err)
 		return []byte{0}
 	}
 }

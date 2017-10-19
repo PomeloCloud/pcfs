@@ -59,8 +59,9 @@ message GetBlockResponse {
 }
 
 message AppendToBlockRequest {
-    bytes key = 1;
-    bytes data = 2;
+    uint64 block_size = 1;
+    bytes key = 2;
+    bytes data = 3;
 }
 
 message DeleteBlockRequest {
@@ -76,6 +77,26 @@ message WriteResult {
 message NewDirectoryContract {
     bytes parent_dir = 1;
     Directory dir = 3;
+}
+
+message AcquireFileWriteLockContract {
+    bytes key = 1;
+}
+
+message ReleaseFileWriteLockContract {
+    bytes key = 1;
+}
+
+message NewFileContract {
+    string name = 1;
+    bytes dir = 2;
+    bytes volume = 3;
+}
+
+message FileWriteLock {
+    uint64 group = 1;
+    uint64 owner = 2;
+    bytes key = 4;
 }
 
 message Nothing {}
