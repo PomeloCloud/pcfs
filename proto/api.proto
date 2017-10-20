@@ -10,7 +10,7 @@ service PCFS {
     rpc AppendToBlock(AppendToBlockRequest) returns (WriteResult) {}
     rpc CreateBlock(CreateBlockRequest) returns (WriteResult) {}
     rpc DeleteBlock(DeleteBlockRequest) returns (WriteResult) {}
-    rpc SuggestBlockStash(Nothing) returns (BlockStashSuggestion) {}
+    rpc SuggestBlockStash(BlockStashSuggestionRequest) returns (BlockStashSuggestion) {}
 }
 
 message BlockData {
@@ -100,14 +100,13 @@ message GetDirectoryRequest {
     bytes key = 2;
 }
 
-message Node {
-    string address = 1;
-    uint64 node_id = 2;
-    uint64 remains = 3;
+message BlockStashSuggestionRequest {
+    uint64 group = 1;
+    uint32 num = 2;
 }
 
 message BlockStashSuggestion {
-    repeated Node nodes = 1;
+    repeated HostStash nodes = 1;
 }
 
 message WriteResult {

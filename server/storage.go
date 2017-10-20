@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	bft "github.com/PomeloCloud/BFTRaft4go/server"
 	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/dgraph-io/badger"
@@ -264,6 +265,47 @@ func (s *PCFSServer) DeleteBlock(ctx context.Context, req *pb.DeleteBlockRequest
 	return nil, errors.New("unimplemented")
 }
 
-func (s *PCFSServer) SuggestBlockStash(ctx context.Context, req *pb.Nothing) (*pb.BlockStashSuggestion, error) {
-
+func (s *PCFSServer) SuggestBlockStash(ctx context.Context, req *pb.BlockStashSuggestionRequest) (*pb.BlockStashSuggestion, error) {
+	hosts := []*pb.HostStash{}
+	remainRquired := _10MB
+	group := req.Group
+	startKey := DBKey(group, STASH, utils.U64Bytes(0))
+	keyPrefix := bft.ComposeKeyPrefix(group, STASH)
+	if err := s.BFTRaft.DB.View(func(txn *badger.Txn) error {
+		iter := txn.NewIterator(badger.IteratorOptions{})
+		iter.Seek(startKey)
+		for true {
+			if uint32(len(hosts)) >= req.Num {
+				break
+			}
+			if iter.ValidForPrefix(keyPrefix) {
+				hostData, err := iter.Item().Value()
+				if err != nil {
+					host := pb.HostStash{}
+					if err := proto.Unmarshal(hostData, &host); err == nil {
+						if host.Capacity-host.Used > uint64(remainRquired) {
+							hosts = append(hosts, &host)
+						}
+					} else {
+						log.Println("error on decoding stash value:", err)
+						break
+					}
+				} else {
+					log.Println("error on get stash value:", err)
+					break
+				}
+				iter.Next()
+			} else {
+				break
+			}
+		}
+		iter.Close()
+		return nil
+	}); err != nil {
+		log.Println("sent", len(hosts), "stash hosts")
+		return &pb.BlockStashSuggestion{Nodes: hosts}, nil
+	} else {
+		log.Println("cannot get stash hosts")
+		return nil, err
+	}
 }
