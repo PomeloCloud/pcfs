@@ -19,12 +19,12 @@ const _10MB = uint32(10 * 1024 * 1024)
 const _1KB = uint32(1024)
 
 const (
-	VOLUMES    = 1
-	DIRECTORY  = 2
-	FILE_LOCK  = 3
-	FILE_META  = 4
-	BLOCKS     = 5
-	STASH = 6
+	VOLUMES   = 1
+	DIRECTORY = 2
+	FILE_LOCK = 3
+	FILE_META = 4
+	BLOCKS    = 5
+	STASH     = 6
 )
 
 const (
@@ -35,12 +35,28 @@ const (
 	CONFIRM_BLOCK     = 14
 	COMMIT_BLOCK      = 15
 	REG_STASH         = 16
+	RELEASE_FILE_LOCK = 17
 )
+
+const (
+	STASH_REG = 10
+)
+
+func (s *PCFSServer) RegisterStorageContracts() {
+	s.BFTRaft.RegisterRaftFunc(NEW_VOLUME, s.smNewVolume)
+	s.BFTRaft.RegisterRaftFunc(NEW_DIR, s.smNewDirectory)
+	s.BFTRaft.RegisterRaftFunc(ACQUIRE_FILE_LOCK, s.smAcquireFileWriteLock)
+	s.BFTRaft.RegisterRaftFunc(TOUCH_FILE, s.smTouchFile)
+	s.BFTRaft.RegisterRaftFunc(CONFIRM_BLOCK, s.smConfirmBlock)
+	s.BFTRaft.RegisterRaftFunc(COMMIT_BLOCK, s.smCommitBlockCreation)
+	s.BFTRaft.RegisterRaftFunc(REG_STASH, s.smRegStash)
+	s.BFTRaft.RegisterRaftFunc(RELEASE_FILE_LOCK, s.smReleaseFileWriteLock)
+}
 
 func (s *PCFSServer) smRegStash(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	hostStash := &pb.HostStash{}
-	if err := proto.Unmarshal(*arg, hostStash); err == nil {
+	if err := proto.Unmarshal(*arg, hostStash); err != nil {
 		log.Println("cannot decode host stash", err)
 	}
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
@@ -286,7 +302,7 @@ func (s *PCFSServer) smConfirmBlock(arg *[]byte, entry *rpb.LogEntry) []byte {
 }
 
 // invoked by client to commit confirmed block that will put into file meta data
-func (s *PCFSServer) CommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smCommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	contract := &pb.ConfirmBlockCreationContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {

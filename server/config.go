@@ -1,8 +1,7 @@
-package storage
+package server
 
 import (
 	"io/ioutil"
-	"log"
 	"encoding/json"
 )
 
@@ -15,7 +14,6 @@ func ReadConfigFile(path string) FileConfig {
 	if err != nil {
 		panic(err)
 	}
-	log.Println(string(data))
 	fc := FileConfig{}
 	if err := json.Unmarshal(data, &fc); err != nil {
 		panic(err)

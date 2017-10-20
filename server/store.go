@@ -7,7 +7,6 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/golang/protobuf/proto"
 	"log"
-	"github.com/docker/docker/pkg/discovery/file"
 )
 
 func DBKey(group uint64, t uint32, key []byte) []byte {
@@ -172,12 +171,12 @@ func SetBlock(txn *badger.Txn, block *pb.BlockData) error {
 func GetHostStash(txn *badger.Txn, group uint64, nodeId uint64) (*pb.HostStash, error) {
 	dbkey := DBKey(group, STASH, utils.U64Bytes(nodeId))
 	volItem, err := txn.Get(dbkey)
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get host stash item:", err)
 		return nil, err
 	}
 	hValue, err := volItem.Value()
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get host stash value:", err)
 		return nil, err
 	}
