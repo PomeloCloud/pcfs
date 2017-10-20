@@ -40,6 +40,8 @@ func main() {
 	log.Println("registering storage contracts")
 	fs.RegisterStorageContracts()
 	bftRaft.StartServer()
+	fs.CheckStashGroup(true)
+	fs.CheckJoinAlphaGroup()
 	fs.RegisterNode(pcfs.ReadConfigFile("storage.json"))
 }
 

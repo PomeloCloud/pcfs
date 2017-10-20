@@ -8,7 +8,7 @@ import (
 	"log"
 )
 
-func (s *PCFSServer) CheckStashGroup() {
+func (s *PCFSServer) CheckStashGroup(join bool) {
 	log.Println("check stash group")
 	if !s.BFTRaft.Client.GroupExists(STASH_REG) {
 		err := s.BFTRaft.NewGroup(&rpbs.RaftGroup{
@@ -23,11 +23,14 @@ func (s *PCFSServer) CheckStashGroup() {
 		}
 	} else {
 		log.Println("group stash existed")
+		if join {
+			log.Println("will join stash reg group")
+			s.BFTRaft.NodeJoin(STASH_REG)
+		}
 	}
 }
 
 func (s *PCFSServer) RegisterNode(config FileConfig) {
-	s.CheckStashGroup()
 	var c datasize.ByteSize
 	err := c.UnmarshalText([]byte(config.Capacity))
 	if err != nil {
