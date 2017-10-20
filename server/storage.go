@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/dgraph-io/badger"
 	"log"
 	"strings"
-	"github.com/PomeloCloud/BFTRaft4go/utils"
+	"github.com/golang/protobuf/proto"
+	"github.com/docker/docker/pkg/discovery/file"
 )
 
 func (s *PCFSServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.BlockData, error) {
@@ -193,11 +195,63 @@ func (s *PCFSServer) AppendToBlock(ctx context.Context, req *pb.AppendToBlockReq
 		return nil
 	}); err == nil {
 		return &pb.WriteResult{
-			Succeed: true,
-			Remains: remains,
+			Succeed:   true,
+			Remains:   remains,
 			BlockHash: blockHash,
 		}, nil
 	} else {
 		return nil, err
+	}
+}
+
+func (s *PCFSServer) CreateBlock(ctx context.Context, req *pb.CreateBlockRequest) (*pb.WriteResult, error) {
+	group := req.Group
+	fileMeta, err := s.GetMajorityFileMeta(group, req.File)
+	if err != nil {
+		log.Println("cannot get block file meta:", err)
+		return nil, err
+	}
+	blockDBKey := BlockDBKey(group, req.File, req.Index)
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		block := &pb.BlockData{
+			Group: req.Group,
+			Index: req.Index,
+			File:  req.File,
+			Data:  make([]byte, fileMeta.BlockSize),
+		}
+		if _, err := txn.Get(blockDBKey); err != badger.ErrKeyNotFound {
+			return errors.New("block already exists")
+		} else {
+			SetBlock(txn, block)
+			return nil
+		}
+	}); err == nil {
+		contract := &pb.ConfirmBlockContract{
+			NodeId: s.BFTRaft.Id,
+			Index: req.Index,
+			File: req.File,
+			Req: req,
+		}
+		contractData, err := proto.Marshal(contract)
+		if err != nil {
+			panic(err)
+		}
+		res, err := s.BFTRaft.Client.ExecCommand(group, CONFIRM_BLOCK, contractData)
+		if err != nil {
+			panic(err) // for debug
+		}
+		switch (*res)[0] {
+		case 1:
+			log.Println("confirm block succeed")
+			return &pb.WriteResult{
+				Succeed: true,
+				Remains: 0,
+				BlockHash: []byte{},
+			}, nil
+		default:
+			msg := "confirm block failed:"
+			log.Println(msg, res)
+			return nil, errors.New(msg)
+		}
 	}
 }

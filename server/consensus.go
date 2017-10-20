@@ -5,6 +5,9 @@ import (
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"log"
 	"time"
+	"github.com/golang/protobuf/proto"
+	"context"
+	"errors"
 )
 
 func GetPeerRPC(addr string) pb.PCFSClient {
@@ -74,4 +77,32 @@ func (s *PCFSServer) GroupMajorityResponse(group uint64, f func(client pb.PCFSCl
 		}
 	}
 	return nil
+}
+
+func (s *PCFSServer)GetMajorityFileMeta(group uint64, file []byte) (*pb.FileMeta, error) {
+	fileData := s.GroupMajorityResponse(group, func(client pb.PCFSClient) (interface{}, []byte) {
+		file, err := client.GetFileMeta(context.Background(), &pb.GetFileRequest{
+			Group: group,
+			File: file,
+		})
+		if err != nil {
+			log.Println("cannot get file meta for create block")
+			return nil, []byte{}
+		} else {
+			feature, err := proto.Marshal(file)
+			if err != nil {
+				log.Println("cannot get feature for file meta for create block")
+			}
+			return file, feature
+		}
+	})
+	var meta *pb.FileMeta
+	if fileData == nil {
+		msg := "majority response nil for getting file meta in create block"
+		log.Println(msg)
+		return nil, errors.New(msg)
+	} else {
+		meta = fileData.(*pb.FileMeta)
+		return meta, nil
+	}
 }

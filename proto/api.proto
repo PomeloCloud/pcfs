@@ -16,9 +16,8 @@ service PCFS {
 message BlockData {
     uint64 group = 1;
     uint64 index = 2;
-    uint32 size = 3;
-    bytes file = 4;
-    bytes data = 5;
+    bytes file = 3;
+    bytes data = 4;
 }
 
 message Block {
