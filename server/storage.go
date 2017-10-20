@@ -8,6 +8,7 @@ import (
 	"github.com/dgraph-io/badger"
 	"log"
 	"strings"
+	"github.com/PomeloCloud/BFTRaft4go/utils"
 )
 
 func (s *PCFSServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.BlockData, error) {
@@ -137,7 +138,7 @@ func (s *PCFSServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryReq
 				item = &pb.DirectoryItem{
 					Type: pb.DirectoryItem_DIR,
 					File: &pb.FileMeta{},
-					Dir: subDir,
+					Dir:  subDir,
 				}
 			case byte(pb.DirectoryItem_FILE):
 				subFile, err := GetFile(txn, group, k)
@@ -147,7 +148,7 @@ func (s *PCFSServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryReq
 				item = &pb.DirectoryItem{
 					Type: pb.DirectoryItem_FILE,
 					File: subFile,
-					Dir: &pb.Directory{},
+					Dir:  &pb.Directory{},
 				}
 			}
 			items = append(items, item)
@@ -160,6 +161,43 @@ func (s *PCFSServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryReq
 		return res, nil
 	} else {
 		log.Println("error on getting dir:", err)
+		return nil, err
+	}
+}
+
+// Following RPCs are for block stash servers
+// These servers are likely have no idea about files, directories and volumes
+// To get file meta data, it need to consult the group members
+func (s *PCFSServer) AppendToBlock(ctx context.Context, req *pb.AppendToBlockRequest) (*pb.WriteResult, error) {
+	group := req.Group
+	data := req.Data
+	offset := req.Offset
+	remains := uint64(len(data))
+	blockHash := []byte{}
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		block, err := GetBlockData(txn, group, req.File, req.Index)
+		dataIdx := 0
+		if err != nil {
+			return err
+		}
+		for i := offset; i < uint32(len(block.Data)); i++ {
+			if dataIdx == len(data) {
+				break
+			}
+			block.Data[offset] = data[dataIdx]
+			dataIdx++
+		}
+		remains = uint64(len(data) - dataIdx)
+		SetBlock(txn, block)
+		blockHash, _ = utils.SHA1Hash(block.Data)
+		return nil
+	}); err == nil {
+		return &pb.WriteResult{
+			Succeed: true,
+			Remains: remains,
+			BlockHash: blockHash,
+		}, nil
+	} else {
 		return nil, err
 	}
 }

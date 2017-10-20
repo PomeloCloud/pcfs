@@ -114,7 +114,7 @@ message BlockStashSuggestion {
 message WriteResult {
     bool succeed = 1;
     uint64 remains = 2;
-    bytes key = 3;
+    bytes block_hash = 3;
 }
 
 message NewDirectoryContract {

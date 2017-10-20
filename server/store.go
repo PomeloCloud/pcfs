@@ -7,6 +7,7 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/golang/protobuf/proto"
 	"log"
+	"github.com/docker/docker/pkg/discovery/file"
 )
 
 func DBKey(group uint64, t uint32, key []byte) []byte {
@@ -150,10 +151,20 @@ func GetBlockData(txn *badger.Txn, group uint64, file []byte, index uint64) (*pb
 		log.Println("cannot get bd value:", err)
 		return nil, err
 	}
-	bd := &pb.BlockData{}
-	if err := proto.Unmarshal(bdValue, bd); err != nil {
+	vol := &pb.BlockData{}
+	if err := proto.Unmarshal(bdValue, vol); err != nil {
 		log.Println("cannot decode bd:", err)
 		return nil, err
 	}
-	return bd, nil
+	return vol, nil
+}
+
+func SetBlock(txn *badger.Txn, block *pb.BlockData) error {
+	dbKey := BlockDBKey(block.Group, block.File, block.Index)
+	data, err := proto.Marshal(block)
+	if err != nil {
+		log.Println("cannot encode block")
+		return err
+	}
+	return txn.Set(dbKey, data, 0x00)
 }

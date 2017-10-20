@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	rpb "github.com/PomeloCloud/BFTRaft4go/proto/server"
@@ -20,11 +19,21 @@ const _10MB = uint32(10 * 1024 * 1024)
 const _1KB = uint32(1024)
 
 const (
-	VOLUMES   = 1
-	DIRECTORY = 2
-	FILE_LOCK = 3
-	FILE_META = 4
-	BLOCKS    = 5
+	VOLUMES    = 1
+	DIRECTORY  = 2
+	FILE_LOCK  = 3
+	FILE_META  = 4
+	BLOCKS     = 5
+	BLOCK_DATA = 6
+)
+
+const (
+	NEW_VOLUME        = 10
+	NEW_DIR           = 11
+	ACQUIRE_FILE_LOCK = 12
+	TOUCH_FILE        = 13
+	CONFIRM_BLOCK     = 14
+	COMMIT_BLOCK      = 15
 )
 
 func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
