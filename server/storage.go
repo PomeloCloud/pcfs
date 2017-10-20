@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/dgraph-io/badger"
 	"log"
-	"fmt"
 )
 
 func (s *PCFSServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.BlockData, error) {
@@ -40,6 +40,24 @@ func (s *PCFSServer) GetFileMeta(ctx context.Context, req *pb.GetFileRequest) (*
 		return res, nil
 	} else {
 		msg := fmt.Sprint("cannot get the file: ", err)
+		log.Println(msg)
+		return nil, errors.New(msg)
+	}
+}
+
+func (s *PCFSServer) GetVolume(ctx context.Context, req *pb.GetVolumeRequest) (*pb.Volume, error) {
+	var res *pb.Volume
+	if err := s.BFTRaft.DB.View(func(txn *badger.Txn) error {
+		if bd, err := GetVolume(txn, req.Group, IdFromName(req.Name)); err == nil {
+			res = bd
+		} else {
+			return err
+		}
+		return nil
+	}); err == nil {
+		return res, nil
+	} else {
+		msg := fmt.Sprint("cannot get the volume: ", err)
 		log.Println(msg)
 		return nil, errors.New(msg)
 	}

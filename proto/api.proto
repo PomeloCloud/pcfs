@@ -4,6 +4,7 @@ package client;
 service PCFS {
     rpc GetBlock(GetBlockRequest) returns (BlockData) {}
     rpc GetFileMeta(GetFileRequest) returns (FileMeta) {}
+    rpc GetVolume(GetVolumeRequest) returns (Volume) {}
     rpc AppendToBlock(AppendToBlockRequest) returns (WriteResult) {}
     rpc CreateBlock(CreateBlockRequest) returns (WriteResult) {}
     rpc DeleteBlock(DeleteBlockRequest) returns (WriteResult) {}
@@ -86,6 +87,11 @@ message CreateBlockRequest {
 message GetFileRequest {
     uint64 group = 1;
     bytes file = 2;
+}
+
+message GetVolumeRequest {
+    uint64 group = 1;
+    string name = 2;
 }
 
 message Node {
