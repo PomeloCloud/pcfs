@@ -168,3 +168,33 @@ func SetBlock(txn *badger.Txn, block *pb.BlockData) error {
 	}
 	return txn.Set(dbKey, data, 0x00)
 }
+
+func GetHostStash(txn *badger.Txn, group uint64, nodeId uint64) (*pb.HostStash, error) {
+	dbkey := DBKey(group, STASH, utils.U64Bytes(nodeId))
+	volItem, err := txn.Get(dbkey)
+	if err == nil {
+		log.Println("cannot get host stash item:", err)
+		return nil, err
+	}
+	hValue, err := volItem.Value()
+	if err == nil {
+		log.Println("cannot get host stash value:", err)
+		return nil, err
+	}
+	h := &pb.HostStash{}
+	if err := proto.Unmarshal(hValue, h); err != nil {
+		log.Println("cannot decode host stash:", err)
+		return nil, err
+	}
+	return h, nil
+}
+
+func SetHostStash(txn *badger.Txn, group uint64, host *pb.HostStash) error {
+	dbKey := DBKey(group, STASH, utils.U64Bytes(host.HostId))
+	data, err := proto.Marshal(host)
+	if err != nil {
+		log.Println("cannot encode host stash")
+		return err
+	}
+	return txn.Set(dbKey, data, 0x00)
+}

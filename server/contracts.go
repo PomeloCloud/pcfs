@@ -24,7 +24,7 @@ const (
 	FILE_LOCK  = 3
 	FILE_META  = 4
 	BLOCKS     = 5
-	BLOCK_DATA = 6
+	STASH = 6
 )
 
 const (
@@ -34,9 +34,38 @@ const (
 	TOUCH_FILE        = 13
 	CONFIRM_BLOCK     = 14
 	COMMIT_BLOCK      = 15
+	REG_STASH         = 16
 )
 
-func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smRegStash(arg *[]byte, entry *rpb.LogEntry) []byte {
+	group := entry.Command.Group
+	hostStash := &pb.HostStash{}
+	if err := proto.Unmarshal(*arg, hostStash); err == nil {
+		log.Println("cannot decode host stash", err)
+	}
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		host := s.BFTRaft.GetHost(txn, hostStash.HostId)
+		if host == nil {
+			return errors.New("cannot found host")
+		}
+		stash, err := GetHostStash(txn, group, hostStash.HostId)
+		if err == badger.ErrKeyNotFound {
+			hostStash.Used = 0
+		} else if err == nil {
+			hostStash.Used = stash.Used
+		} else {
+			return err
+		}
+		return SetHostStash(txn, group, hostStash)
+	}); err == nil {
+		return []byte{1}
+	} else {
+		log.Println("cannot reg stash:", err)
+		return []byte{0}
+	}
+}
+
+func (s *PCFSServer) smNewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	volume := &pb.Volume{}
 	if err := proto.Unmarshal(*arg, volume); err != nil {
@@ -94,7 +123,7 @@ func (s *PCFSServer) NewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
 	}
 }
 
-func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smNewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	contract := &pb.NewDirectoryContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {
@@ -127,7 +156,7 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 	}
 }
 
-func (s *PCFSServer) AcquireFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smAcquireFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	contract := &pb.AcquireFileWriteLockContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {
@@ -162,7 +191,7 @@ func (s *PCFSServer) AcquireFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []by
 	}
 }
 
-func (s *PCFSServer) ReleaseFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smReleaseFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	contract := &pb.ReleaseFileWriteLockContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {
@@ -187,7 +216,7 @@ func (s *PCFSServer) ReleaseFileWriteLock(arg *[]byte, entry *rpb.LogEntry) []by
 	}
 }
 
-func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smTouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	contract := &pb.TouchFileContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {
@@ -235,7 +264,7 @@ func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
 // Setback: size of the file can only be calculated by multiply it's block count and block size
 // invoked when new block created on storage servers
 // TODO: find a way to verify that stash nodes really occupied those spaces
-func (s *PCFSServer) ConfirmBlock(arg *[]byte, entry *rpb.LogEntry) []byte {
+func (s *PCFSServer) smConfirmBlock(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
 	contract := &pb.ConfirmBlockContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {

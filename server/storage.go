@@ -7,10 +7,9 @@ import (
 	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/dgraph-io/badger"
+	"github.com/golang/protobuf/proto"
 	"log"
 	"strings"
-	"github.com/golang/protobuf/proto"
-	"github.com/docker/docker/pkg/discovery/file"
 )
 
 func (s *PCFSServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.BlockData, error) {
@@ -228,9 +227,9 @@ func (s *PCFSServer) CreateBlock(ctx context.Context, req *pb.CreateBlockRequest
 	}); err == nil {
 		contract := &pb.ConfirmBlockContract{
 			NodeId: s.BFTRaft.Id,
-			Index: req.Index,
-			File: req.File,
-			Req: req,
+			Index:  req.Index,
+			File:   req.File,
+			Req:    req,
 		}
 		contractData, err := proto.Marshal(contract)
 		if err != nil {
@@ -244,8 +243,8 @@ func (s *PCFSServer) CreateBlock(ctx context.Context, req *pb.CreateBlockRequest
 		case 1:
 			log.Println("confirm block succeed")
 			return &pb.WriteResult{
-				Succeed: true,
-				Remains: 0,
+				Succeed:   true,
+				Remains:   0,
 				BlockHash: []byte{},
 			}, nil
 		default:
@@ -253,5 +252,18 @@ func (s *PCFSServer) CreateBlock(ctx context.Context, req *pb.CreateBlockRequest
 			log.Println(msg, res)
 			return nil, errors.New(msg)
 		}
+	} else {
+		return &pb.WriteResult{
+			Succeed: false,
+			Remains: 0,
+		}, err
 	}
+}
+
+func (s *PCFSServer) DeleteBlock(ctx context.Context, req *pb.DeleteBlockRequest) (*pb.WriteResult, error) {
+	return nil, errors.New("unimplemented")
+}
+
+func (s *PCFSServer) SuggestBlockStash(ctx context.Context, req *pb.Nothing) (*pb.BlockStashSuggestion, error) {
+
 }
