@@ -5,6 +5,8 @@ service PCFS {
     rpc GetBlock(GetBlockRequest) returns (BlockData) {}
     rpc GetFileMeta(GetFileRequest) returns (FileMeta) {}
     rpc GetVolume(GetVolumeRequest) returns (Volume) {}
+    rpc GetDirectory(GetDirectoryRequest) returns (Directory) {}
+    rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse) {}
     rpc AppendToBlock(AppendToBlockRequest) returns (WriteResult) {}
     rpc CreateBlock(CreateBlockRequest) returns (WriteResult) {}
     rpc DeleteBlock(DeleteBlockRequest) returns (WriteResult) {}
@@ -94,6 +96,11 @@ message GetVolumeRequest {
     string name = 2;
 }
 
+message GetDirectoryRequest {
+    uint64 group = 1;
+    bytes key = 2;
+}
+
 message Node {
     string address = 1;
     uint64 node_id = 2;
@@ -148,6 +155,27 @@ message FileWriteLock {
     uint64 group = 1;
     uint64 owner = 2;
     bytes key = 4;
+}
+
+message DirectoryItem {
+    enum ItemType {
+        FILE = 0;
+        DIR = 1;
+    }
+    ItemType type = 1;
+    FileMeta file = 2;
+    Directory dir = 3;
+}
+
+message ListDirectoryResponse {
+    string name = 1;
+    bytes key = 2;
+    repeated DirectoryItem items = 3;
+}
+
+message ListDirectoryRequest {
+    uint64 group = 1;
+    string path = 2;
 }
 
 message Nothing {}

@@ -90,7 +90,7 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 	contract := &pb.NewDirectoryContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {
 		log.Println("cannot decode new dir contract:", err)
-		return []byte{0}
+		return []byte{byte(pb.DirectoryItem_DIR)}
 	}
 	dir := contract.Dir
 	dir.Key, _ = utils.SHA1Hash(append(contract.ParentDir, entry.Hash...))
@@ -100,12 +100,6 @@ func (s *PCFSServer) NewDirectory(arg *[]byte, entry *rpb.LogEntry) []byte {
 		parentDir, err := GetDirectory(txn, group, contract.ParentDir)
 		if err != nil {
 			return err
-		}
-		// check dir existed
-		for _, fileKey := range parentDir.Files {
-			if bytes.Equal(fileKey, newDirToken) {
-				return errors.New("dir exists")
-			}
 		}
 		parentDir.Files = append(parentDir.Files, newDirToken)
 		if err := SetDirectory(txn, group, dir); err != nil {
@@ -200,11 +194,18 @@ func (s *PCFSServer) TouchFile(arg *[]byte, entry *rpb.LogEntry) []byte {
 		Key:          fileKey,
 		Blocks:       []*pb.Block{},
 	}
+	dirToken := append([]byte{byte(pb.DirectoryItem_FILE)}, file.Key...)
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
 		if vol, err := GetVolume(txn, group, contract.Volume); err == nil {
 			file.BlockSize = vol.BlockSize
 		} else {
 			return errors.New("cannot find volume for touch file")
+		}
+		if dir, err := GetDirectory(txn, group, contract.Dir); err == nil {
+			dir.Files = append(dir.Files, dirToken)
+			if err := SetDirectory(txn, group, dir); err != nil {
+				return err
+			}
 		}
 		if _, err := GetFile(txn, group, fileKey); err == badger.ErrKeyNotFound {
 			SetFile(txn, group, file)
