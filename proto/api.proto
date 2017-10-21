@@ -3,6 +3,7 @@ package client;
 
 service PCFS {
     rpc GetBlock(GetBlockRequest) returns (BlockData) {}
+    rpc SetBlock(BlockData) returns (WriteResult) {}
     rpc GetFileMeta(GetFileRequest) returns (FileMeta) {}
     rpc GetVolume(GetVolumeRequest) returns (Volume) {}
     rpc GetDirectory(GetDirectoryRequest) returns (Directory) {}
@@ -16,7 +17,7 @@ service PCFS {
 message BlockData {
     uint64 group = 1;
     uint64 index = 2;
-    uint32 size = 3;
+    uint32 tail = 3;
     bytes file = 4;
     bytes data = 5;
 }

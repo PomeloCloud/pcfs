@@ -11,7 +11,6 @@ import (
 	"path"
 	"fmt"
 	"time"
-	"os"
 )
 
 type PCFS struct {
@@ -24,6 +23,7 @@ type FileStream struct {
 	meta               *pb.FileMeta
 	Offset uint64
 	currentBlockData   *pb.BlockData
+	currentBlockDirty bool
 }
 
 func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
@@ -65,6 +65,7 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 				volume:             dirRes.Volume,
 				Offset: 0,
 				currentBlockData:   nil, // lazy load
+				currentBlockDirty: true,
 			}, nil
 		}
 	}
@@ -179,6 +180,11 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 }
 
 func (fs *FileStream) getBlock(index uint64) error {
+	if fs.currentBlockData.Index == index {
+		log.Println("don't need to get block, it's already there")
+		return nil
+	}
+	fs.LandWrite()
 	blockI := fs.filesystem.network.GroupMajorityResponse(
 		REG_STASH,
 		func(client pb.PCFSClient) (interface{}, []byte) {
@@ -241,30 +247,68 @@ func (fs *FileStream) Read(bytes *[]byte) (uint64, error) {
 	if bytes == nil {
 		return 0, errors.New("need a sized byte buffer")
 	}
-	OrigOffset := fs.Offset
-	for i := 0; i < len(*bytes); i ++ {
-		blockOffset := uint32(len(*bytes)) % fs.meta.BlockSize
-
-		if i < len(*bytes) - 1 {
+	origOffset := fs.Offset
+	var i uint64
+	for i = 0; i < uint64(len(*bytes)); i ++ {
+		blockOffset := uint32(origOffset + i) % fs.meta.BlockSize
+		if blockOffset > fs.currentBlockData.Tail {
+			log.Println("reached tail, read exited")
+			break
+		}
+		(*bytes)[i] = fs.currentBlockData.Data[i]
+		if i < uint64(len(*bytes)) - 1 {
 			fs.Offset ++
 			if err := fs.ensureBlock(); err != nil {
 				log.Println("cannot ensure block on read")
 			}
 		}
 	}
+	return i, nil
 }
 
-func (fs *FileStream) Write(bytes *[]byte) uint64 {
-	return 0
+func (fs *FileStream) Write(bytes *[]byte) (uint64, error) {
+	if bytes == nil {
+		return 0, errors.New("need a sized byte buffer")
+	}
+	origOffset := fs.Offset
+	var i uint64
+	for i = 0; i < uint64(len(*bytes)); i ++ {
+		blockOffset := uint32(origOffset + i) % fs.meta.BlockSize
+		if blockOffset > fs.currentBlockData.Tail {
+			fs.currentBlockData.Tail++
+		}
+		fs.currentBlockData.Data[i] = (*bytes)[i]
+		fs.currentBlockDirty = true
+		if i < uint64(len(*bytes)) - 1 {
+			fs.Offset ++
+			if err := fs.ensureBlock(); err != nil {
+				log.Println("cannot ensure block on read")
+			}
+		}
+	}
+	return i, nil
 }
 
 // write all buffed data into the file system
-func (fs *FileStream) TouchDown() {
-
-}
-
-func (fs *PCFS) Open(path string) (*FileStream, error) {
-	return nil, nil
+func (fs *FileStream) LandWrite() {
+	if !fs.currentBlockDirty {
+		return
+	}
+	resI := fs.filesystem.network.GroupMajorityResponse(
+		REG_STASH, func(client pb.PCFSClient) (interface{}, []byte) {
+			res, err := client.SetBlock(context, fs.currentBlockData)
+			if err != nil {
+				log.Println("cannot set block:", err)
+				return nil, []byte{0}
+			} else {
+				return res, res.BlockHash
+			}
+		})
+	if resI == nil {
+		log.Println("cannot land data on network")
+	} else {
+		fs.currentBlockDirty = false
+	}
 }
 
 func (fs *PCFS) Mkdir(path string) error {

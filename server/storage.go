@@ -31,6 +31,26 @@ func (s *PCFSServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb
 	}
 }
 
+func (s *PCFSServer) SetBlock(ctx context.Context, data *pb.BlockData) (*pb.WriteResult, error) {
+	if err := s.BFTRaft.DB.View(func(txn *badger.Txn) error {
+		if _, err := GetBlockData(txn, data.Group, data.File, data.Index); err != nil {
+			return SetBlock(txn, data)
+		}
+		return nil
+	}); err == nil {
+		log.Println("set block successful")
+		blockHash, _ := utils.SHA1Hash(data.Data)
+		return &pb.WriteResult{
+			Succeed:   true,
+			Remains:   0,
+			BlockHash: blockHash,
+		}, nil
+	} else {
+		log.Println("cannot set block:", err)
+		return nil, err
+	}
+}
+
 func (s *PCFSServer) GetFileMeta(ctx context.Context, req *pb.GetFileRequest) (*pb.FileMeta, error) {
 	var res *pb.FileMeta
 	if err := s.BFTRaft.DB.View(func(txn *badger.Txn) error {
@@ -188,8 +208,8 @@ func (s *PCFSServer) AppendToBlock(ctx context.Context, req *pb.AppendToBlockReq
 				break
 			}
 			block.Data[offset] = data[dataIdx]
-			if block.Size < offset + 1 {
-				block.Size = offset + 1
+			if block.Tail < offset {
+				block.Tail = offset
 			}
 			dataIdx++
 		}
