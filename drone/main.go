@@ -102,6 +102,7 @@ func main() {
 	fs.RegisterNode(pcfs.ReadConfigFile("storage.json"))
 	pfs := storage.PCFS{Network: fs}
 	pfs.NewVolume()
+	time.Sleep(1 * time.Second)
 	putExampleFiles(&pfs)
 	handleExit(fs)
 	make(chan bool) <- true
