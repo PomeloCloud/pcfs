@@ -237,8 +237,21 @@ func (fs *FileStream) Seek(pos uint64) error {
 	return fs.ensureBlock()
 }
 
-func (fs *FileStream) Read(bytes *[]byte, count uint64) uint64 {
-	return 0
+func (fs *FileStream) Read(bytes *[]byte) (uint64, error) {
+	if bytes == nil {
+		return 0, errors.New("need a sized byte buffer")
+	}
+	OrigOffset := fs.Offset
+	for i := 0; i < len(*bytes); i ++ {
+		blockOffset := uint32(len(*bytes)) % fs.meta.BlockSize
+
+		if i < len(*bytes) - 1 {
+			fs.Offset ++
+			if err := fs.ensureBlock(); err != nil {
+				log.Println("cannot ensure block on read")
+			}
+		}
+	}
 }
 
 func (fs *FileStream) Write(bytes *[]byte) uint64 {

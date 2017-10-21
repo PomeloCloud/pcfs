@@ -188,6 +188,9 @@ func (s *PCFSServer) AppendToBlock(ctx context.Context, req *pb.AppendToBlockReq
 				break
 			}
 			block.Data[offset] = data[dataIdx]
+			if block.Size < offset + 1 {
+				block.Size = offset + 1
+			}
 			dataIdx++
 		}
 		remains = uint64(len(data) - dataIdx)
