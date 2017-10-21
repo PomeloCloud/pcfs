@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 	"os/signal"
+	"github.com/PomeloCloud/pcfs/drone/storage"
 )
 
 func initDB(dbPath string) {
@@ -52,10 +53,13 @@ func main() {
 	log.Println("registering storage contracts")
 	fs.RegisterStorageContracts()
 	bftRaft.StartServer()
-	time.Sleep(5 * time.Second)
-	fs.CheckStashGroup(true)
+	time.Sleep(1 * time.Second)
 	fs.CheckJoinAlphaGroup()
+	//time.Sleep(1 * time.Second)
+	//fs.CheckStashGroup(true)
 	fs.RegisterNode(pcfs.ReadConfigFile("storage.json"))
+	pfs := storage.PCFS{Network: fs}
+	pfs.NewVolume()
 	handleExit(fs)
 	make(chan bool) <- true
 }

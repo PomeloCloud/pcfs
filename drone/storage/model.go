@@ -1,20 +1,21 @@
-package client
+package storage
 
 import (
 	"context"
 	"errors"
 	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
-	. "github.com/PomeloCloud/pcfs/server"
+	serv "github.com/PomeloCloud/pcfs/server"
 	"github.com/golang/protobuf/proto"
 	"log"
 	"path"
 	"fmt"
 	"time"
+	"strconv"
 )
 
 type PCFS struct {
-	network *PCFSServer
+	Network *serv.PCFSServer
 }
 
 type FileStream struct {
@@ -27,9 +28,9 @@ type FileStream struct {
 }
 
 func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
-	dirI := fs.network.GroupMajorityResponse(STASH_GROUP, func(client pb.PCFSClient) (interface{}, []byte) {
+	dirI := fs.Network.GroupMajorityResponse(serv.STASH_GROUP, func(client pb.PCFSClient) (interface{}, []byte) {
 		res, err := client.ListDirectory(context.Background(), &pb.ListDirectoryRequest{
-			Group: STASH_GROUP,
+			Group: serv.STASH_GROUP,
 			Path:  dirPath,
 		})
 		if err != nil {
@@ -91,7 +92,7 @@ func (fs *PCFS)touchFile(volume []byte, dir []byte , filename string) error {
 	if err != nil {
 		return err
 	}
-	res, err := fs.network.BFTRaft.Client.ExecCommand(STASH_GROUP, TOUCH_FILE, contractData)
+	res, err := fs.Network.BFTRaft.Client.ExecCommand(serv.STASH_GROUP, serv.TOUCH_FILE, contractData)
 	if err != nil {
 		return err
 	} else {
@@ -104,11 +105,11 @@ func (fs *PCFS)touchFile(volume []byte, dir []byte , filename string) error {
 }
 
 func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) {
-	hostSuggestionsI := fs.filesystem.network.GroupMajorityResponse(
-		STASH_GROUP,
+	hostSuggestionsI := fs.filesystem.Network.GroupMajorityResponse(
+		serv.STASH_GROUP,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			suggestion, err := client.SuggestBlockStash(context.Background(), &pb.BlockStashSuggestionRequest{
-				Group: STASH_GROUP,
+				Group: serv.STASH_GROUP,
 				Num:   fs.volume.Replications * 2,
 			})
 			features, _ := utils.SHA1Hash(HashHostStash(suggestion.Nodes))
@@ -119,20 +120,19 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 				return nil, []byte{0}
 			}
 		})
-	hostSuggestions := []*pb.HostStash{}
 	if hostSuggestionsI == nil {
 		msg := fmt.Sprint("cannot get new block suggestion, it's null")
 		log.Print(msg)
 		return nil, errors.New(msg)
 	}
-	hostSuggestions = hostSuggestionsI.([]*pb.HostStash{})
+	hostSuggestions := hostSuggestionsI.([]*pb.HostStash)
 	succeedReplicas := []uint64{}
-	raft := fs.filesystem.network.BFTRaft
+	raft := fs.filesystem.Network.BFTRaft
 	for _, host := range hostSuggestions {
 		host := raft.GetHostNTXN(host.HostId)
-		c := GetPeerRPC(host.ServerAddr)
+		c := serv.GetPeerRPC(host.ServerAddr)
 		if res, err := c.CreateBlock(context.Background(), &pb.CreateBlockRequest{
-			Group: STASH_GROUP,
+			Group: serv.STASH_GROUP,
 			Index: index,
 			File:  file,
 		}); err == nil {
@@ -156,7 +156,7 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 		log.Print(msg)
 		return nil, errors.New(msg)
 	}
-	res, err := raft.Client.ExecCommand(STASH_GROUP, COMMIT_BLOCK, contractData)
+	res, err := raft.Client.ExecCommand(serv.STASH_GROUP, serv.COMMIT_BLOCK, contractData)
 	if err != nil {
 		msg := fmt.Sprint("cannot commit block contract", err)
 		log.Print(msg)
@@ -185,11 +185,11 @@ func (fs *FileStream) getBlock(index uint64) error {
 		return nil
 	}
 	fs.LandWrite()
-	blockI := fs.filesystem.network.GroupMajorityResponse(
-		REG_STASH,
+	blockI := fs.filesystem.Network.GroupMajorityResponse(
+		serv.REG_STASH,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			block, err := client.GetBlock(context.Background(), &pb.GetBlockRequest{
-				Group:REG_STASH,
+				Group:serv.REG_STASH,
 				Index:index,
 				File: fs.meta.Key,
 			})
@@ -294,9 +294,9 @@ func (fs *FileStream) LandWrite() {
 	if !fs.currentBlockDirty {
 		return
 	}
-	resI := fs.filesystem.network.GroupMajorityResponse(
-		REG_STASH, func(client pb.PCFSClient) (interface{}, []byte) {
-			res, err := client.SetBlock(context, fs.currentBlockData)
+	resI := fs.filesystem.Network.GroupMajorityResponse(
+		serv.REG_STASH, func(client pb.PCFSClient) (interface{}, []byte) {
+			res, err := client.SetBlock(context.Background(), fs.currentBlockData)
 			if err != nil {
 				log.Println("cannot set block:", err)
 				return nil, []byte{0}
@@ -305,7 +305,7 @@ func (fs *FileStream) LandWrite() {
 			}
 		})
 	if resI == nil {
-		log.Println("cannot land data on network")
+		log.Println("cannot land data on Network")
 	} else {
 		fs.currentBlockDirty = false
 	}
@@ -325,4 +325,23 @@ func (fs *PCFS) Rmr(path string) error {
 
 func (fs *PCFS) Mv(path string) error {
 	return nil
+}
+
+func (fs *PCFS)NewVolume() {
+	vol := &pb.Volume{
+		Name: strconv.Itoa(int(fs.Network.BFTRaft.Id)),
+		Key: []byte{},
+		Replications: 3,
+		BlockSize: 8 * 1024,
+		RootDir: []byte{},
+	}
+	volData, err := proto.Marshal(vol)
+	if err != nil {
+		panic(err)
+	}
+	volRes, err := fs.Network.BFTRaft.Client.ExecCommand(serv.STASH_GROUP, serv.NEW_VOLUME, volData)
+	if err != nil {
+		panic(err)
+	}
+	log.Println("new vol res:", volRes)
 }

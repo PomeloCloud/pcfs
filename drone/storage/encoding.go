@@ -1,4 +1,4 @@
-package client
+package storage
 
 import (
 	pb "github.com/PomeloCloud/pcfs/proto"
