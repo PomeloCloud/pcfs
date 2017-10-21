@@ -142,7 +142,7 @@ message ConfirmBlockContract {
     CreateBlockRequest req = 4;
 }
 
-message ConfirmBlockCreationContract {
+message CommitBlockContract {
     uint64 index = 1;
     uint64 client_time = 2;
     repeated uint64 node_ids = 3;
@@ -168,7 +168,8 @@ message DirectoryItem {
 message ListDirectoryResponse {
     string name = 1;
     bytes key = 2;
-    repeated DirectoryItem items = 3;
+    Volume volume = 3;
+    repeated DirectoryItem items = 4;
 }
 
 message ListDirectoryRequest {

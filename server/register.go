@@ -1,8 +1,8 @@
 package server
 
 import (
-	pb "github.com/PomeloCloud/pcfs/proto"
 	rpbs "github.com/PomeloCloud/BFTRaft4go/proto/server"
+	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/c2h5oh/datasize"
 	"github.com/golang/protobuf/proto"
 	"log"
@@ -13,8 +13,8 @@ func (s *PCFSServer) CheckStashGroup(join bool) {
 	if !s.BFTRaft.Client.GroupExists(STASH_REG) {
 		err := s.BFTRaft.NewGroup(&rpbs.RaftGroup{
 			Replications: 32,
-			Id: STASH_REG,
-			Term: 0,
+			Id:           STASH_REG,
+			Term:         0,
 		})
 		if err != nil {
 			panic(err)

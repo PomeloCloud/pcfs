@@ -158,6 +158,7 @@ func (s *PCFSServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryReq
 		res.Key = dir.Key
 		res.Items = items
 		res.Name = dir.Name
+		res.Volume = volume
 		return nil
 	}); err == nil {
 		return res, nil

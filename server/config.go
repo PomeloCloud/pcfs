@@ -1,8 +1,8 @@
 package server
 
 import (
-	"io/ioutil"
 	"encoding/json"
+	"io/ioutil"
 )
 
 type FileConfig struct {

@@ -2,10 +2,10 @@ package main
 
 import (
 	bftraft "github.com/PomeloCloud/BFTRaft4go/server"
+	pcfs "github.com/PomeloCloud/pcfs/server"
+	"log"
 	"os"
 	"time"
-	"log"
-	pcfs "github.com/PomeloCloud/pcfs/server"
 )
 
 func initDB(dbPath string) {
@@ -27,9 +27,9 @@ func main() {
 	initDB(networkConfig.Db)
 	log.Print("join network...")
 	bftRaft, err := bftraft.GetServer(bftraft.Options{
-		DBPath: networkConfig.Db,
-		Address: networkConfig.Address,
-		Bootstrap: networkConfig.Bootstraps,
+		DBPath:           networkConfig.Db,
+		Address:          networkConfig.Address,
+		Bootstrap:        networkConfig.Bootstraps,
 		ConsensusTimeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -44,4 +44,3 @@ func main() {
 	fs.CheckJoinAlphaGroup()
 	fs.RegisterNode(pcfs.ReadConfigFile("storage.json"))
 }
-

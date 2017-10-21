@@ -304,7 +304,7 @@ func (s *PCFSServer) smConfirmBlock(arg *[]byte, entry *rpb.LogEntry) []byte {
 // invoked by client to commit confirmed block that will put into file meta data
 func (s *PCFSServer) smCommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []byte {
 	group := entry.Command.Group
-	contract := &pb.ConfirmBlockCreationContract{}
+	contract := &pb.CommitBlockContract{}
 	if err := proto.Unmarshal(*arg, contract); err != nil {
 		log.Println("cannode decode confirm block creation contract:", err)
 		return []byte{0}
