@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"os/signal"
 )
 
 func initDB(dbPath string) {
@@ -18,6 +19,17 @@ func initDB(dbPath string) {
 	} else {
 		log.Println("wallet already exists")
 	}
+}
+
+func handleExit(fs *pcfs.PCFSServer) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func(){
+		<-c
+		log.Println("gracelly shutdown and write back wallet")
+		fs.BFTRaft.DB.Close()
+		os.Exit(0)
+	}()
 }
 
 func main() {
@@ -40,7 +52,10 @@ func main() {
 	log.Println("registering storage contracts")
 	fs.RegisterStorageContracts()
 	bftRaft.StartServer()
+	time.Sleep(5 * time.Second)
 	fs.CheckStashGroup(true)
 	fs.CheckJoinAlphaGroup()
 	fs.RegisterNode(pcfs.ReadConfigFile("storage.json"))
+	handleExit(fs)
+	make(chan bool) <- true
 }
