@@ -19,9 +19,9 @@ type PCFS struct {
 }
 
 type FileStream struct {
-	filesystem        *PCFS
+	Filesystem        *PCFS
 	volume            *pb.Volume
-	meta              *pb.FileMeta
+	Meta              *pb.FileMeta
 	Offset            uint64
 	currentBlockData  *pb.BlockData
 	currentBlockDirty bool
@@ -62,12 +62,12 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 	for _, item := range dirRes.Items {
 		if item.Type == pb.DirectoryItem_FILE && item.File.Name == filename {
 			return &FileStream{
-				meta:              item.File,
+				Meta:              item.File,
 				volume:            dirRes.Volume,
 				Offset:            0,
 				currentBlockData:  nil, // lazy load
 				currentBlockDirty: false,
-				filesystem:        fs,
+				Filesystem:        fs,
 			}, nil
 		}
 	}
@@ -107,7 +107,7 @@ func (fs *PCFS) touchFile(volume []byte, dir []byte, filename string) error {
 
 func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) {
 	log.Println("create block at index:", index)
-	hostSuggestionsI := fs.filesystem.Network.GroupMajorityResponse(
+	hostSuggestionsI := fs.Filesystem.Network.GroupMajorityResponse(
 		serv.STASH_GROUP,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			suggestion, err := client.SuggestBlockStash(context.Background(), &pb.BlockStashSuggestionRequest{
@@ -132,7 +132,7 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 	}
 	hostSuggestions := hostSuggestionsI.([]*pb.HostStash)
 	succeedReplicas := []uint64{}
-	raft := fs.filesystem.Network.BFTRaft
+	raft := fs.Filesystem.Network.BFTRaft
 	blockReq := &pb.CreateBlockRequest{
 		Group: serv.STASH_GROUP,
 		Index: index,
@@ -175,7 +175,7 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 			if err := proto.Unmarshal(*res, &newMeta); err == nil {
 				return &newMeta, nil
 			} else {
-				msg := fmt.Sprint("cannot decode new meta", err)
+				msg := fmt.Sprint("cannot decode new Meta", err)
 				log.Print(msg)
 				return nil, errors.New(msg)
 			}
@@ -193,13 +193,13 @@ func (fs *FileStream) getBlock(index uint64) error {
 		return nil
 	}
 	fs.LandWrite()
-	blockI := fs.filesystem.Network.GroupMajorityResponse(
+	blockI := fs.Filesystem.Network.GroupMajorityResponse(
 		serv.STASH_GROUP,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			block, err := client.GetBlock(context.Background(), &pb.GetBlockRequest{
 				Group: serv.STASH_GROUP,
 				Index: index,
-				File:  fs.meta.Key,
+				File:  fs.Meta.Key,
 			})
 			if err != nil {
 				msg := "cannot get block"
@@ -222,24 +222,24 @@ func (fs *FileStream) getBlock(index uint64) error {
 }
 
 func (fs *FileStream) ensureBlock() error {
-	blockSize := uint64(fs.meta.BlockSize)
+	blockSize := uint64(fs.Meta.BlockSize)
 	var blockIndex uint64 = fs.Offset / blockSize
 	if fs.currentBlockData == nil || fs.currentBlockData.Index != blockIndex {
-		if len(fs.meta.Blocks) == 0 {
-			newMeta, err := fs.newBlock(fs.meta.Key, 0)
+		if len(fs.Meta.Blocks) == 0 {
+			newMeta, err := fs.newBlock(fs.Meta.Key, 0)
 			if err != nil {
 				log.Println("cannot ensure first block:", err)
 				return err
 			}
-			fs.meta = newMeta
+			fs.Meta = newMeta
 		}
-		for i := uint64(len(fs.meta.Blocks)); i <= blockIndex; i++ {
-			newMeta, err := fs.newBlock(fs.meta.Key, i)
+		for i := uint64(len(fs.Meta.Blocks)); i <= blockIndex; i++ {
+			newMeta, err := fs.newBlock(fs.Meta.Key, i)
 			if err != nil {
 				log.Println("cannot ensure block ", i, ":", err)
 				return err
 			}
-			fs.meta = newMeta
+			fs.Meta = newMeta
 		}
 		fs.getBlock(blockIndex)
 	}
@@ -259,7 +259,7 @@ func (fs *FileStream) Read(bytes *[]byte) (uint64, error) {
 	var i uint64
 	for i = 0; i < uint64(len(*bytes)); i++ {
 		fs.ensureBlock()
-		blockOffset := uint32(origOffset+i) % fs.meta.BlockSize
+		blockOffset := uint32(origOffset+i) % fs.Meta.BlockSize
 		if blockOffset > fs.currentBlockData.Tail {
 			log.Println("reached tail, read exited")
 			break
@@ -279,7 +279,7 @@ func (fs *FileStream) Write(bytes *[]byte) (uint64, error) {
 	for i = 0; i < uint64(len(*bytes)); i++ {
 		fs.ensureBlock()
 		fs.currentBlockDirty = true
-		blockOffset := uint32(origOffset+i) % fs.meta.BlockSize
+		blockOffset := uint32(origOffset+i) % fs.Meta.BlockSize
 		if blockOffset > fs.currentBlockData.Tail {
 			fs.currentBlockData.Tail++
 		}
@@ -299,10 +299,10 @@ func (fs *FileStream) LandWrite() {
 		log.Println("cannot land write, block data is nil")
 	}
 	index := fs.currentBlockData.Index
-	blockMeta := fs.meta.Blocks[index]
+	blockMeta := fs.Meta.Blocks[index]
 	hostIds := blockMeta.Hosts
 	for _, hostId := range hostIds {
-		host := fs.filesystem.Network.BFTRaft.GetHostNTXN(hostId)
+		host := fs.Filesystem.Network.BFTRaft.GetHostNTXN(hostId)
 		if host == nil {
 			log.Println("cannot find host:", hostId)
 		}
