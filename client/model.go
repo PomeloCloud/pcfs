@@ -1,13 +1,52 @@
 package client
 
-import pb "github.com/PomeloCloud/pcfs/proto"
+import (
+	pb "github.com/PomeloCloud/pcfs/proto"
+	. "github.com/PomeloCloud/pcfs/server"
+	"context"
+	"log"
+	"github.com/golang/protobuf/proto"
+)
 
 type PCFS struct {
+	network *PCFSServer
 	volume *pb.Volume
 }
 
 type FileStream struct {
-	meta *pb.FileMeta
+	meta         *pb.FileMeta
+	blockSize    uint64
+	currentBlock *pb.BlockData
+}
+
+func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
+	dirI := fs.network.GroupMajorityResponse(STASH_REG, func(client pb.PCFSClient) (interface{}, []byte) {
+		res, err := client.ListDirectory(context.Background(), &pb.ListDirectoryRequest{
+			Group: STASH_REG,
+			Path: dirPath,
+		})
+		if err != nil {
+			log.Print("cannot access node for dir list")
+			return nil, []byte{}
+		} else {
+			feature, err := proto.Marshal(res)
+			if err != nil {
+				log.Print("cannot encode dir list for feature")
+				return nil, []byte{}
+			}
+			return res, feature
+		}
+	})
+	if dirI != nil {
+		return dirI.(*pb.ListDirectoryResponse)
+	} else {
+		log.Print("cannot create new stream")
+		return nil
+	}
+}
+
+func (fs *PCFS) NewStream(path string) *FileStream {
+
 }
 
 func (fs *FileStream) Seek(pos uint64) uint64 {
