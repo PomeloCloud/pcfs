@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var FS PCFS
+
 func initDB(dbPath string) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(dbPath, os.ModePerm); err != nil {
@@ -103,5 +105,6 @@ func Main() {
 	pfs.NewVolume()
 	time.Sleep(1 * time.Second)
 	putExampleFiles(&pfs)
+	FS = pfs
 	handleExit(fs)
 }
