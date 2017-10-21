@@ -1,13 +1,11 @@
 package storage
 
 import (
-	"fmt"
 	bftraft "github.com/PomeloCloud/BFTRaft4go/server"
 	pcfs "github.com/PomeloCloud/pcfs/server"
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
 	"time"
 )
 
@@ -37,26 +35,11 @@ func handleExit(fs *pcfs.PCFSServer) {
 }
 
 func putExampleFiles(fs *PCFS) {
-	stream, err := fs.NewStream(fmt.Sprint("/", strconv.Itoa(int(fs.Network.BFTRaft.Id)), "/example.jpg"))
-	if err != nil {
-		panic(err)
-	}
-	f, err := os.Open("example.jpg")
-	bufferSize := 64
-	for true {
-		b := make([]byte, bufferSize)
-		n, err := f.Read(b)
-		if err != nil {
-			panic(err)
-		}
-		wb := b[0:n]
-		stream.Write(&wb)
-		if n < bufferSize {
-			break
-		}
-	}
-	log.Println("inset file succeed")
-	stream.Seek(0)
+	fs.PutFile("example.jpg", "example.jpg")
+	fs.PutFile("CV.pdf", "CV.pdf")
+	log.Println("example files:", fs.Ls(fs.Home()).Items)
+	bufferSize := 1024
+	stream, err := fs.NewStream(fs.Home() + "/example.jpg")
 	fo, err := os.Create("example.out.jpg")
 	if err != nil {
 		panic(err)

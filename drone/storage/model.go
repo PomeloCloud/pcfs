@@ -12,6 +12,7 @@ import (
 	"path"
 	"strconv"
 	"time"
+	"os"
 )
 
 type PCFS struct {
@@ -103,6 +104,33 @@ func (fs *PCFS) touchFile(volume []byte, dir []byte, filename string) error {
 			return errors.New("touch file failed")
 		}
 	}
+}
+
+func (fs *PCFS) Home() string {
+	return fmt.Sprint("/", strconv.Itoa(int(fs.Network.BFTRaft.Id)))
+}
+
+func (fs *PCFS) PutFile(src string, dest string)  {
+	stream, err := fs.NewStream(fmt.Sprint(fs.Home(), "/", dest))
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.Open(src)
+	bufferSize := 1024
+	for true {
+		b := make([]byte, bufferSize)
+		n, err := f.Read(b)
+		if err != nil {
+			panic(err)
+		}
+		wb := b[0:n]
+		stream.Write(&wb)
+		if n < bufferSize {
+			break
+		}
+	}
+	stream.LandWrite()
+	log.Println("insert file succeed")
 }
 
 func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) {
