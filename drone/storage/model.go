@@ -66,7 +66,7 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 				volume:            dirRes.Volume,
 				Offset:            0,
 				currentBlockData:  nil, // lazy load
-				currentBlockDirty: true,
+				currentBlockDirty: false,
 				filesystem:        fs,
 			}, nil
 		}
@@ -193,10 +193,10 @@ func (fs *FileStream) getBlock(index uint64) error {
 	}
 	fs.LandWrite()
 	blockI := fs.filesystem.Network.GroupMajorityResponse(
-		serv.REG_STASH,
+		serv.STASH_GROUP,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			block, err := client.GetBlock(context.Background(), &pb.GetBlockRequest{
-				Group: serv.REG_STASH,
+				Group: serv.STASH_GROUP,
 				Index: index,
 				File:  fs.meta.Key,
 			})
@@ -210,7 +210,7 @@ func (fs *FileStream) getBlock(index uint64) error {
 		},
 	)
 	if blockI == nil {
-		msg := fmt.Sprint("cannot get block data for:", index)
+		msg := fmt.Sprint("cannot get block data for: ", index)
 		log.Println(msg)
 		return errors.New(msg)
 	} else {
@@ -288,6 +288,7 @@ func (fs *FileStream) Write(bytes *[]byte) (uint64, error) {
 		if i < uint64(len(*bytes))-1 {
 			fs.Offset++
 		}
+		fs.currentBlockDirty = true
 	}
 	return i, nil
 }
@@ -298,7 +299,7 @@ func (fs *FileStream) LandWrite() {
 		return
 	}
 	resI := fs.filesystem.Network.GroupMajorityResponse(
-		serv.REG_STASH, func(client pb.PCFSClient) (interface{}, []byte) {
+		serv.STASH_GROUP, func(client pb.PCFSClient) (interface{}, []byte) {
 			res, err := client.SetBlock(context.Background(), fs.currentBlockData)
 			if err != nil {
 				log.Println("cannot set block:", err)

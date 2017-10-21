@@ -141,12 +141,12 @@ func GetVolume(txn *badger.Txn, group uint64, key []byte) (*pb.Volume, error) {
 func GetBlockData(txn *badger.Txn, group uint64, file []byte, index uint64) (*pb.BlockData, error) {
 	dbkey := BlockDBKey(group, file, index)
 	bdItem, err := txn.Get(dbkey)
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get bd item:", err)
 		return nil, err
 	}
 	bdValue, err := bdItem.Value()
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get bd value:", err)
 		return nil, err
 	}
