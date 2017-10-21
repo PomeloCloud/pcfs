@@ -109,7 +109,7 @@ func (s *PCFSServer) GetDirectory(ctx context.Context, req *pb.GetDirectoryReque
 func (s *PCFSServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryRequest) (*pb.ListDirectoryResponse, error) {
 	addrParts := strings.Split(req.Path, "/")
 	group := req.Group
-	volumeName := addrParts[0]
+	volumeName := addrParts[1]
 	volumeKey := IdFromName(volumeName)
 	res := &pb.ListDirectoryResponse{}
 	if err := s.BFTRaft.DB.View(func(txn *badger.Txn) error {
@@ -120,7 +120,10 @@ func (s *PCFSServer) ListDirectory(ctx context.Context, req *pb.ListDirectoryReq
 		}
 		parentDirKey := volume.RootDir
 	ADDRPART:
-		for i := 1; i < len(addrParts); i++ {
+		for i := 2; i < len(addrParts); i++ {
+			if addrParts[i] == "" {
+				continue
+			}
 			parentDir, err := GetDirectory(txn, group, parentDirKey)
 			if err != nil {
 				log.Println("cannot get dir:", err)
@@ -304,7 +307,7 @@ func (s *PCFSServer) SuggestBlockStash(ctx context.Context, req *pb.BlockStashSu
 			}
 			if iter.ValidForPrefix(keyPrefix) {
 				hostData, err := iter.Item().Value()
-				if err != nil {
+				if err == nil {
 					host := pb.HostStash{}
 					if err := proto.Unmarshal(hostData, &host); err == nil {
 						if host.Capacity-host.Used > uint64(remainRquired) {
@@ -325,7 +328,7 @@ func (s *PCFSServer) SuggestBlockStash(ctx context.Context, req *pb.BlockStashSu
 		}
 		iter.Close()
 		return nil
-	}); err != nil {
+	}); err == nil {
 		log.Println("sent", len(hosts), "stash hosts")
 		return &pb.BlockStashSuggestion{Nodes: hosts}, nil
 	} else {

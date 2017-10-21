@@ -26,12 +26,12 @@ func BlockDBKey(group uint64, file []byte, index uint64) []byte {
 func GetDirectory(txn *badger.Txn, group uint64, key []byte) (*pb.Directory, error) {
 	dbkey := DBKey(group, DIRECTORY, key)
 	dirItem, err := txn.Get(dbkey)
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get dir item:", err)
 		return nil, err
 	}
 	dirValue, err := dirItem.Value()
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get dir value:", err)
 		return nil, err
 	}
@@ -91,12 +91,12 @@ func (s *PCFSServer) ReleaseWriteLock(txn *badger.Txn, group uint64, lock *pb.Fi
 func GetFile(txn *badger.Txn, group uint64, key []byte) (*pb.FileMeta, error) {
 	dbkey := DBKey(group, FILE_META, key)
 	fileItem, err := txn.Get(dbkey)
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get file item:", err)
 		return nil, err
 	}
 	fileValue, err := fileItem.Value()
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get file value:", err)
 		return nil, err
 	}
@@ -121,12 +121,12 @@ func SetFile(txn *badger.Txn, group uint64, file *pb.FileMeta) error {
 func GetVolume(txn *badger.Txn, group uint64, key []byte) (*pb.Volume, error) {
 	dbkey := DBKey(group, VOLUMES, key)
 	volItem, err := txn.Get(dbkey)
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get vol item:", err)
 		return nil, err
 	}
 	volValue, err := volItem.Value()
-	if err == nil {
+	if err != nil {
 		log.Println("cannot get vol value:", err)
 		return nil, err
 	}

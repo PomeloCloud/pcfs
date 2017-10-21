@@ -3,15 +3,15 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	serv "github.com/PomeloCloud/pcfs/server"
 	"github.com/golang/protobuf/proto"
 	"log"
 	"path"
-	"fmt"
-	"time"
 	"strconv"
+	"time"
 )
 
 type PCFS struct {
@@ -19,11 +19,11 @@ type PCFS struct {
 }
 
 type FileStream struct {
-	filesystem         *PCFS
-	volume             *pb.Volume
-	meta               *pb.FileMeta
-	Offset uint64
-	currentBlockData   *pb.BlockData
+	filesystem        *PCFS
+	volume            *pb.Volume
+	meta              *pb.FileMeta
+	Offset            uint64
+	currentBlockData  *pb.BlockData
 	currentBlockDirty bool
 }
 
@@ -62,11 +62,12 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 	for _, item := range dirRes.Items {
 		if item.Type == pb.DirectoryItem_FILE && item.File.Name == filename {
 			return &FileStream{
-				meta:               item.File,
-				volume:             dirRes.Volume,
-				Offset: 0,
-				currentBlockData:   nil, // lazy load
+				meta:              item.File,
+				volume:            dirRes.Volume,
+				Offset:            0,
+				currentBlockData:  nil, // lazy load
 				currentBlockDirty: true,
+				filesystem:        fs,
 			}, nil
 		}
 	}
@@ -81,12 +82,12 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 	return nil, errors.New("cannot find filename for stream")
 }
 
-func (fs *PCFS)touchFile(volume []byte, dir []byte , filename string) error {
+func (fs *PCFS) touchFile(volume []byte, dir []byte, filename string) error {
 	touchFileContract := &pb.TouchFileContract{
 		ClientTime: uint64(time.Now().UnixNano()),
-		Name: filename,
-		Dir: dir,
-		Volume: volume,
+		Name:       filename,
+		Dir:        dir,
+		Volume:     volume,
 	}
 	contractData, err := proto.Marshal(touchFileContract)
 	if err != nil {
@@ -105,6 +106,7 @@ func (fs *PCFS)touchFile(volume []byte, dir []byte , filename string) error {
 }
 
 func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) {
+	log.Println("create block at index:", index)
 	hostSuggestionsI := fs.filesystem.Network.GroupMajorityResponse(
 		serv.STASH_GROUP,
 		func(client pb.PCFSClient) (interface{}, []byte) {
@@ -112,6 +114,9 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 				Group: serv.STASH_GROUP,
 				Num:   fs.volume.Replications * 2,
 			})
+			if err != nil {
+				log.Println("cannot create new block", err)
+			}
 			features, _ := utils.SHA1Hash(HashHostStash(suggestion.Nodes))
 			if err == nil {
 				return suggestion.Nodes, features
@@ -139,16 +144,18 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 			if res.Succeed {
 				succeedReplicas = append(succeedReplicas, host.Id)
 			}
+		} else {
+			log.Println("cannot set block to stash:", err)
 		}
 	}
 	if len(succeedReplicas) == 0 {
 		return nil, errors.New("cannot get replica servers")
 	}
 	commitContract := &pb.CommitBlockContract{
-		Index: index,
+		Index:      index,
 		ClientTime: uint64(time.Now().UnixNano()),
-		NodeIds: succeedReplicas,
-		File: file,
+		NodeIds:    succeedReplicas,
+		File:       file,
 	}
 	contractData, err := proto.Marshal(commitContract)
 	if err != nil {
@@ -180,7 +187,7 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 }
 
 func (fs *FileStream) getBlock(index uint64) error {
-	if fs.currentBlockData.Index == index {
+	if fs.currentBlockData != nil && fs.currentBlockData.Index == index {
 		log.Println("don't need to get block, it's already there")
 		return nil
 	}
@@ -189,9 +196,9 @@ func (fs *FileStream) getBlock(index uint64) error {
 		serv.REG_STASH,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			block, err := client.GetBlock(context.Background(), &pb.GetBlockRequest{
-				Group:serv.REG_STASH,
-				Index:index,
-				File: fs.meta.Key,
+				Group: serv.REG_STASH,
+				Index: index,
+				File:  fs.meta.Key,
 			})
 			if err != nil {
 				msg := "cannot get block"
@@ -228,7 +235,7 @@ func (fs *FileStream) ensureBlock() error {
 		for i := uint64(len(fs.meta.Blocks)); i <= blockIndex; i++ {
 			newMeta, err := fs.newBlock(fs.meta.Key, i)
 			if err != nil {
-				log.Println("cannot ensure block ", i,":", err)
+				log.Println("cannot ensure block ", i, ":", err)
 				return err
 			}
 			fs.meta = newMeta
@@ -249,18 +256,16 @@ func (fs *FileStream) Read(bytes *[]byte) (uint64, error) {
 	}
 	origOffset := fs.Offset
 	var i uint64
-	for i = 0; i < uint64(len(*bytes)); i ++ {
-		blockOffset := uint32(origOffset + i) % fs.meta.BlockSize
+	for i = 0; i < uint64(len(*bytes)); i++ {
+		fs.ensureBlock()
+		blockOffset := uint32(origOffset+i) % fs.meta.BlockSize
 		if blockOffset > fs.currentBlockData.Tail {
 			log.Println("reached tail, read exited")
 			break
 		}
 		(*bytes)[i] = fs.currentBlockData.Data[i]
-		if i < uint64(len(*bytes)) - 1 {
-			fs.Offset ++
-			if err := fs.ensureBlock(); err != nil {
-				log.Println("cannot ensure block on read")
-			}
+		if i < uint64(len(*bytes))-1 {
+			fs.Offset++
 		}
 	}
 	return i, nil
@@ -272,18 +277,16 @@ func (fs *FileStream) Write(bytes *[]byte) (uint64, error) {
 	}
 	origOffset := fs.Offset
 	var i uint64
-	for i = 0; i < uint64(len(*bytes)); i ++ {
-		blockOffset := uint32(origOffset + i) % fs.meta.BlockSize
+	for i = 0; i < uint64(len(*bytes)); i++ {
+		fs.ensureBlock()
+		blockOffset := uint32(origOffset+i) % fs.meta.BlockSize
 		if blockOffset > fs.currentBlockData.Tail {
 			fs.currentBlockData.Tail++
 		}
 		fs.currentBlockData.Data[i] = (*bytes)[i]
 		fs.currentBlockDirty = true
-		if i < uint64(len(*bytes)) - 1 {
-			fs.Offset ++
-			if err := fs.ensureBlock(); err != nil {
-				log.Println("cannot ensure block on read")
-			}
+		if i < uint64(len(*bytes))-1 {
+			fs.Offset++
 		}
 	}
 	return i, nil
@@ -327,13 +330,13 @@ func (fs *PCFS) Mv(path string) error {
 	return nil
 }
 
-func (fs *PCFS)NewVolume() {
+func (fs *PCFS) NewVolume() {
 	vol := &pb.Volume{
-		Name: strconv.Itoa(int(fs.Network.BFTRaft.Id)),
-		Key: []byte{},
+		Name:         strconv.Itoa(int(fs.Network.BFTRaft.Id)),
+		Key:          []byte{},
 		Replications: 3,
-		BlockSize: 8 * 1024,
-		RootDir: []byte{},
+		BlockSize:    8 * 1024,
+		RootDir:      []byte{},
 	}
 	volData, err := proto.Marshal(vol)
 	if err != nil {

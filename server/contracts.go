@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	rpb "github.com/PomeloCloud/BFTRaft4go/proto/server"
-	bft "github.com/PomeloCloud/BFTRaft4go/server"
 	"github.com/PomeloCloud/BFTRaft4go/utils"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	"github.com/dgraph-io/badger"
@@ -39,7 +38,7 @@ const (
 )
 
 const (
-	STASH_GROUP = 10
+	STASH_GROUP = utils.ALPHA_GROUP
 )
 
 func (s *PCFSServer) RegisterStorageContracts() {
@@ -103,10 +102,11 @@ func (s *PCFSServer) smNewVolume(arg *[]byte, entry *rpb.LogEntry) []byte {
 		volume.BlockSize = _10MB
 	}
 	dbKey := DBKey(group, VOLUMES, key)
-	rootDirDbKey := append(bft.ComposeKeyPrefix(group, DIRECTORY), key...)
+	rootDirDbKey := DBKey(group, DIRECTORY, key)
 	rootDir := &pb.Directory{
 		Key: key, Files: [][]byte{},
 	}
+	volume.RootDir = key
 	volumeData, err := proto.Marshal(volume)
 	if err != nil {
 		log.Println("cannot encode volume")
@@ -333,7 +333,7 @@ func (s *PCFSServer) smCommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []b
 	newBlock := &pb.Block{Index: contract.Index, Hosts: hosts}
 	var fileRes *pb.FileMeta
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
-		if file, err := GetFile(txn, group, contract.File); err != nil {
+		if file, err := GetFile(txn, group, contract.File); err == nil {
 			blocks := len(file.Blocks)
 			if uint64(blocks) != contract.Index {
 				return errors.New("new block index not match next index")
@@ -348,7 +348,7 @@ func (s *PCFSServer) smCommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []b
 			return err
 		}
 	}); err == nil {
-		log.Println("confirmed new block succeed")
+		log.Println("commit new block succeed")
 		resData, _ := proto.Marshal(fileRes)
 		return resData
 	} else {

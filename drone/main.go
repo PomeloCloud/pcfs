@@ -1,13 +1,15 @@
 package main
 
 import (
+	"fmt"
 	bftraft "github.com/PomeloCloud/BFTRaft4go/server"
+	"github.com/PomeloCloud/pcfs/drone/storage"
 	pcfs "github.com/PomeloCloud/pcfs/server"
 	"log"
 	"os"
-	"time"
 	"os/signal"
-	"github.com/PomeloCloud/pcfs/drone/storage"
+	"strconv"
+	"time"
 )
 
 func initDB(dbPath string) {
@@ -25,12 +27,32 @@ func initDB(dbPath string) {
 func handleExit(fs *pcfs.PCFSServer) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func(){
+	go func() {
 		<-c
 		log.Println("gracelly shutdown and write back wallet")
 		fs.BFTRaft.DB.Close()
 		os.Exit(0)
 	}()
+}
+
+func putExampleFiles(fs *storage.PCFS) {
+	stream, err := fs.NewStream(fmt.Sprint("/", strconv.Itoa(int(fs.Network.BFTRaft.Id)), "/example.jpg"))
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.Open("example.jpg")
+	for true {
+		b := make([]byte, 1024)
+		n, err := f.Read(b)
+		if err != nil {
+			panic(err)
+		}
+		if n < 1024 {
+			break
+		}
+		stream.Write(&b)
+	}
+	log.Println("inset file succeed")
 }
 
 func main() {
@@ -60,6 +82,7 @@ func main() {
 	fs.RegisterNode(pcfs.ReadConfigFile("storage.json"))
 	pfs := storage.PCFS{Network: fs}
 	pfs.NewVolume()
+	putExampleFiles(&pfs)
 	handleExit(fs)
 	make(chan bool) <- true
 }
