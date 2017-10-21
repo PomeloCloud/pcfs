@@ -264,10 +264,8 @@ func (fs *FileStream) Read(bytes *[]byte) (uint64, error) {
 			log.Println("reached tail, read exited")
 			break
 		}
-		(*bytes)[i] = fs.currentBlockData.Data[i]
-		if i < uint64(len(*bytes))-1 {
-			fs.Offset++
-		}
+		(*bytes)[i] = fs.currentBlockData.Data[blockOffset]
+		fs.Offset++
 	}
 	return i, nil
 }
@@ -287,9 +285,7 @@ func (fs *FileStream) Write(bytes *[]byte) (uint64, error) {
 		}
 		fs.currentBlockData.Data[blockOffset] = (*bytes)[i]
 		fs.currentBlockDirty = true
-		if i < uint64(len(*bytes))-1 {
-			fs.Offset++
-		}
+		fs.Offset++
 	}
 	return i, nil
 }

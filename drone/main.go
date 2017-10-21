@@ -41,15 +41,16 @@ func putExampleFiles(fs *storage.PCFS) {
 		panic(err)
 	}
 	f, err := os.Open("example.jpg")
+	bufferSize := 64
 	for true {
-		b := make([]byte, 1024)
+		b := make([]byte, bufferSize)
 		n, err := f.Read(b)
 		if err != nil {
 			panic(err)
 		}
 		wb := b[0:n]
 		stream.Write(&wb)
-		if n < 1024 {
+		if n < bufferSize {
 			break
 		}
 	}
@@ -60,14 +61,14 @@ func putExampleFiles(fs *storage.PCFS) {
 		panic(err)
 	}
 	for true {
-		b := make([]byte, 1024)
+		b := make([]byte, bufferSize)
 		n, err := stream.Read(&b)
 		if err != nil {
 			panic(err)
 		}
 		wb := b[0:n]
 		fo.Write(wb)
-		if n < 1024 {
+		if n < uint64(bufferSize) {
 			break
 		}
 	}

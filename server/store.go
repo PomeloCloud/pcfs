@@ -155,12 +155,14 @@ func GetBlockData(txn *badger.Txn, group uint64, file []byte, index uint64) (*pb
 		log.Println("cannot decode bd:", err)
 		return nil, err
 	}
+	log.Println("got block:", index, vol.Data)
 	return vol, nil
 }
 
 func SetBlock(txn *badger.Txn, block *pb.BlockData) error {
 	dbKey := BlockDBKey(block.Group, block.File, block.Index)
 	data, err := proto.Marshal(block)
+	log.Println("set block:", block.Index, block.Data)
 	if err != nil {
 		log.Println("cannot encode block")
 		return err
