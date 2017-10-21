@@ -1,29 +1,32 @@
 package client
 
 import (
+	"context"
+	"errors"
 	pb "github.com/PomeloCloud/pcfs/proto"
 	. "github.com/PomeloCloud/pcfs/server"
-	"context"
-	"log"
 	"github.com/golang/protobuf/proto"
+	"log"
+	"path"
 )
 
 type PCFS struct {
 	network *PCFSServer
-	volume *pb.Volume
+	volume  *pb.Volume
 }
 
 type FileStream struct {
-	meta         *pb.FileMeta
-	blockSize    uint64
-	currentBlock *pb.BlockData
+	meta               *pb.FileMeta
+	currentBlockData   *pb.BlockData
+	currentBlockOffset uint64
+	currentBlockIndex  int
 }
 
 func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
 	dirI := fs.network.GroupMajorityResponse(STASH_REG, func(client pb.PCFSClient) (interface{}, []byte) {
 		res, err := client.ListDirectory(context.Background(), &pb.ListDirectoryRequest{
 			Group: STASH_REG,
-			Path: dirPath,
+			Path:  dirPath,
 		})
 		if err != nil {
 			log.Print("cannot access node for dir list")
@@ -45,8 +48,23 @@ func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
 	}
 }
 
-func (fs *PCFS) NewStream(path string) *FileStream {
-
+func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
+	dir, file := path.Split(filepath)
+	dirRes := fs.Ls(dir)
+	if dirRes == nil {
+		return nil, errors.New("cannot found dir for stream")
+	}
+	for _, item := range dirRes.Items {
+		if item.Type == pb.DirectoryItem_FILE && item.File.Name == file {
+			return &FileStream{
+				meta: item.File,
+				currentBlockIndex: 0,
+				currentBlockOffset: 0,
+				currentBlockData: nil, // lazy load
+			}, nil
+		}
+	}
+	return nil, errors.New("cannot find file for stream")
 }
 
 func (fs *FileStream) Seek(pos uint64) uint64 {
