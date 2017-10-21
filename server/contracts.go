@@ -39,7 +39,7 @@ const (
 )
 
 const (
-	STASH_REG = 10
+	STASH_GROUP = 10
 )
 
 func (s *PCFSServer) RegisterStorageContracts() {

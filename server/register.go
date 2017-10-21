@@ -10,10 +10,10 @@ import (
 
 func (s *PCFSServer) CheckStashGroup(join bool) {
 	log.Println("check stash group")
-	if !s.BFTRaft.Client.GroupExists(STASH_REG) {
+	if !s.BFTRaft.Client.GroupExists(STASH_GROUP) {
 		err := s.BFTRaft.NewGroup(&rpbs.RaftGroup{
 			Replications: 32,
-			Id:           STASH_REG,
+			Id:           STASH_GROUP,
 			Term:         0,
 		})
 		if err != nil {
@@ -25,7 +25,7 @@ func (s *PCFSServer) CheckStashGroup(join bool) {
 		log.Println("group stash existed")
 		if join {
 			log.Println("will join stash reg group")
-			s.BFTRaft.NodeJoin(STASH_REG)
+			s.BFTRaft.NodeJoin(STASH_GROUP)
 		}
 	}
 }
@@ -47,7 +47,7 @@ func (s *PCFSServer) RegisterNode(config FileConfig) {
 	if err != nil {
 		panic(err)
 	}
-	res, err := s.BFTRaft.Client.ExecCommand(STASH_REG, REG_STASH, hostData)
+	res, err := s.BFTRaft.Client.ExecCommand(STASH_GROUP, REG_STASH, hostData)
 	if err != nil {
 		panic(err)
 	}

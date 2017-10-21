@@ -27,9 +27,9 @@ type FileStream struct {
 }
 
 func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
-	dirI := fs.network.GroupMajorityResponse(STASH_REG, func(client pb.PCFSClient) (interface{}, []byte) {
+	dirI := fs.network.GroupMajorityResponse(STASH_GROUP, func(client pb.PCFSClient) (interface{}, []byte) {
 		res, err := client.ListDirectory(context.Background(), &pb.ListDirectoryRequest{
-			Group: STASH_REG,
+			Group: STASH_GROUP,
 			Path:  dirPath,
 		})
 		if err != nil {
@@ -53,13 +53,13 @@ func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
 }
 
 func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
-	dir, file := path.Split(filepath)
+	dir, filename := path.Split(filepath)
 	dirRes := fs.Ls(dir)
 	if dirRes == nil {
 		return nil, errors.New("cannot found dir for stream")
 	}
 	for _, item := range dirRes.Items {
-		if item.Type == pb.DirectoryItem_FILE && item.File.Name == file {
+		if item.Type == pb.DirectoryItem_FILE && item.File.Name == filename {
 			return &FileStream{
 				meta:               item.File,
 				volume:             dirRes.Volume,
@@ -69,15 +69,46 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 			}, nil
 		}
 	}
-	return nil, errors.New("cannot find file for stream")
+	// filename not found, touch it
+	if err := fs.touchFile(dirRes.Volume.Key, dirRes.Key, filename); err != nil {
+		log.Println("cannot touch file:", err)
+		return nil, err
+	} else {
+		log.Println("file touched, retry:", filepath)
+		return fs.NewStream(filepath)
+	}
+	return nil, errors.New("cannot find filename for stream")
+}
+
+func (fs *PCFS)touchFile(volume []byte, dir []byte , filename string) error {
+	touchFileContract := &pb.TouchFileContract{
+		ClientTime: uint64(time.Now().UnixNano()),
+		Name: filename,
+		Dir: dir,
+		Volume: volume,
+	}
+	contractData, err := proto.Marshal(touchFileContract)
+	if err != nil {
+		return err
+	}
+	res, err := fs.network.BFTRaft.Client.ExecCommand(STASH_GROUP, TOUCH_FILE, contractData)
+	if err != nil {
+		return err
+	} else {
+		if (*res)[0] == 1 {
+			return nil
+		} else {
+			return errors.New("touch file failed")
+		}
+	}
 }
 
 func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) {
 	hostSuggestionsI := fs.filesystem.network.GroupMajorityResponse(
-		STASH_REG,
+		STASH_GROUP,
 		func(client pb.PCFSClient) (interface{}, []byte) {
 			suggestion, err := client.SuggestBlockStash(context.Background(), &pb.BlockStashSuggestionRequest{
-				Group: STASH_REG,
+				Group: STASH_GROUP,
 				Num:   fs.volume.Replications * 2,
 			})
 			features, _ := utils.SHA1Hash(HashHostStash(suggestion.Nodes))
@@ -101,9 +132,9 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 		host := raft.GetHostNTXN(host.HostId)
 		c := GetPeerRPC(host.ServerAddr)
 		if res, err := c.CreateBlock(context.Background(), &pb.CreateBlockRequest{
-			Group: STASH_REG,
+			Group: STASH_GROUP,
 			Index: index,
-			File: file,
+			File:  file,
 		}); err == nil {
 			if res.Succeed {
 				succeedReplicas = append(succeedReplicas, host.Id)
@@ -125,7 +156,7 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 		log.Print(msg)
 		return nil, errors.New(msg)
 	}
-	res, err := raft.Client.ExecCommand(STASH_REG, COMMIT_BLOCK, contractData)
+	res, err := raft.Client.ExecCommand(STASH_GROUP, COMMIT_BLOCK, contractData)
 	if err != nil {
 		msg := fmt.Sprint("cannot commit block contract", err)
 		log.Print(msg)
@@ -140,8 +171,16 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 				log.Print(msg)
 				return nil, errors.New(msg)
 			}
+		} else {
+			msg := fmt.Sprint("commit block contract failed")
+			log.Print(msg)
+			return nil, errors.New(msg)
 		}
 	}
+}
+
+func (fs *FileStream) ensureFirstBlock() {
+	if fs.currentBlockData == nil && fs.meta.Blocks
 }
 
 func (fs *FileStream) Seek(pos uint64) (uint64, error) {
