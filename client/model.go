@@ -11,6 +11,7 @@ import (
 	"path"
 	"fmt"
 	"time"
+	"os"
 )
 
 type PCFS struct {
@@ -21,9 +22,8 @@ type FileStream struct {
 	filesystem         *PCFS
 	volume             *pb.Volume
 	meta               *pb.FileMeta
+	Offset uint64
 	currentBlockData   *pb.BlockData
-	currentBlockOffset uint64
-	currentBlockIndex  int
 }
 
 func (fs *PCFS) Ls(dirPath string) *pb.ListDirectoryResponse {
@@ -63,8 +63,7 @@ func (fs *PCFS) NewStream(filepath string) (*FileStream, error) {
 			return &FileStream{
 				meta:               item.File,
 				volume:             dirRes.Volume,
-				currentBlockIndex:  0,
-				currentBlockOffset: 0,
+				Offset: 0,
 				currentBlockData:   nil, // lazy load
 			}, nil
 		}
@@ -179,15 +178,63 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 	}
 }
 
-func (fs *FileStream) ensureFirstBlock() {
-	if fs.currentBlockData == nil && fs.meta.Blocks
+func (fs *FileStream) getBlock(index uint64) error {
+	blockI := fs.filesystem.network.GroupMajorityResponse(
+		REG_STASH,
+		func(client pb.PCFSClient) (interface{}, []byte) {
+			block, err := client.GetBlock(context.Background(), &pb.GetBlockRequest{
+				Group:REG_STASH,
+				Index:index,
+				File: fs.meta.Key,
+			})
+			if err != nil {
+				msg := "cannot get block"
+				log.Println(msg)
+				return nil, []byte{}
+			} else {
+				return block, block.Data
+			}
+		},
+	)
+	if blockI == nil {
+		msg := fmt.Sprint("cannot get block data for:", index)
+		log.Println(msg)
+		return errors.New(msg)
+	} else {
+		log.Println("got block data:", index)
+		fs.currentBlockData = blockI.(*pb.BlockData)
+		return nil
+	}
 }
 
-func (fs *FileStream) Seek(pos uint64) (uint64, error) {
+func (fs *FileStream) ensureBlock() error {
 	blockSize := uint64(fs.meta.BlockSize)
-	var blockIndex uint64 = pos / blockSize
-	blockOffset := pos % blockSize
+	var blockIndex uint64 = fs.Offset / blockSize
+	if fs.currentBlockData == nil || fs.currentBlockData.Index != blockIndex {
+		if len(fs.meta.Blocks) == 0 {
+			newMeta, err := fs.newBlock(fs.meta.Key, 0)
+			if err != nil {
+				log.Println("cannot ensure first block:", err)
+				return err
+			}
+			fs.meta = newMeta
+		}
+		for i := uint64(len(fs.meta.Blocks)); i <= blockIndex; i++ {
+			newMeta, err := fs.newBlock(fs.meta.Key, i)
+			if err != nil {
+				log.Println("cannot ensure block ", i,":", err)
+				return err
+			}
+			fs.meta = newMeta
+		}
+		fs.getBlock(blockIndex)
+	}
+	return nil
+}
 
+func (fs *FileStream) Seek(pos uint64) error {
+	fs.Offset = pos
+	return fs.ensureBlock()
 }
 
 func (fs *FileStream) Read(bytes *[]byte, count uint64) uint64 {

@@ -21,6 +21,7 @@ message BlockData {
 }
 
 message Block {
+    uint64 index = 1;
     repeated uint64 hosts = 2;
 }
 

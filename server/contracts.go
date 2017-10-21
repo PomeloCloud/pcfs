@@ -330,7 +330,7 @@ func (s *PCFSServer) smCommitBlockCreation(arg *[]byte, entry *rpb.LogEntry) []b
 	// remove cached
 	s.PendingBlocks.Delete(cacheKey)
 	// update file meta
-	newBlock := &pb.Block{Hosts: hosts}
+	newBlock := &pb.Block{Index: contract.Index, Hosts: hosts}
 	var fileRes *pb.FileMeta
 	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
 		if file, err := GetFile(txn, group, contract.File); err != nil {
