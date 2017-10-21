@@ -47,12 +47,31 @@ func putExampleFiles(fs *storage.PCFS) {
 		if err != nil {
 			panic(err)
 		}
+		wb := b[0:n]
+		stream.Write(&wb)
 		if n < 1024 {
 			break
 		}
-		stream.Write(&b)
 	}
 	log.Println("inset file succeed")
+	stream.Seek(0)
+	fo, err := os.Create("example.out.jpg")
+	if err != nil {
+		panic(err)
+	}
+	for true {
+		b := make([]byte, 1024)
+		n, err := stream.Read(&b)
+		if err != nil {
+			panic(err)
+		}
+		wb := b[0:n]
+		fo.Write(wb)
+		if n < 1024 {
+			break
+		}
+	}
+	fo.Close()
 }
 
 func main() {

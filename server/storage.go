@@ -32,9 +32,11 @@ func (s *PCFSServer) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb
 }
 
 func (s *PCFSServer) SetBlock(ctx context.Context, data *pb.BlockData) (*pb.WriteResult, error) {
-	if err := s.BFTRaft.DB.View(func(txn *badger.Txn) error {
-		if _, err := GetBlockData(txn, data.Group, data.File, data.Index); err != nil {
+	if err := s.BFTRaft.DB.Update(func(txn *badger.Txn) error {
+		if _, err := GetBlockData(txn, data.Group, data.File, data.Index); err == nil {
 			return SetBlock(txn, data)
+		} else {
+			return err
 		}
 		return nil
 	}); err == nil {

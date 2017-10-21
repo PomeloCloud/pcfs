@@ -133,14 +133,15 @@ func (fs *FileStream) newBlock(file []byte, index uint64) (*pb.FileMeta, error) 
 	hostSuggestions := hostSuggestionsI.([]*pb.HostStash)
 	succeedReplicas := []uint64{}
 	raft := fs.filesystem.Network.BFTRaft
+	blockReq := &pb.CreateBlockRequest{
+		Group: serv.STASH_GROUP,
+		Index: index,
+		File:  file,
+	}
 	for _, host := range hostSuggestions {
 		host := raft.GetHostNTXN(host.HostId)
 		c := serv.GetPeerRPC(host.ServerAddr)
-		if res, err := c.CreateBlock(context.Background(), &pb.CreateBlockRequest{
-			Group: serv.STASH_GROUP,
-			Index: index,
-			File:  file,
-		}); err == nil {
+		if res, err := c.CreateBlock(context.Background(), blockReq); err == nil {
 			if res.Succeed {
 				succeedReplicas = append(succeedReplicas, host.Id)
 			}
@@ -279,16 +280,16 @@ func (fs *FileStream) Write(bytes *[]byte) (uint64, error) {
 	var i uint64
 	for i = 0; i < uint64(len(*bytes)); i++ {
 		fs.ensureBlock()
+		fs.currentBlockDirty = true
 		blockOffset := uint32(origOffset+i) % fs.meta.BlockSize
 		if blockOffset > fs.currentBlockData.Tail {
 			fs.currentBlockData.Tail++
 		}
-		fs.currentBlockData.Data[i] = (*bytes)[i]
+		fs.currentBlockData.Data[blockOffset] = (*bytes)[i]
 		fs.currentBlockDirty = true
 		if i < uint64(len(*bytes))-1 {
 			fs.Offset++
 		}
-		fs.currentBlockDirty = true
 	}
 	return i, nil
 }
@@ -298,21 +299,30 @@ func (fs *FileStream) LandWrite() {
 	if !fs.currentBlockDirty {
 		return
 	}
-	resI := fs.filesystem.Network.GroupMajorityResponse(
-		serv.STASH_GROUP, func(client pb.PCFSClient) (interface{}, []byte) {
-			res, err := client.SetBlock(context.Background(), fs.currentBlockData)
-			if err != nil {
-				log.Println("cannot set block:", err)
-				return nil, []byte{0}
-			} else {
-				return res, res.BlockHash
-			}
-		})
-	if resI == nil {
-		log.Println("cannot land data on Network")
-	} else {
-		fs.currentBlockDirty = false
+	if fs.currentBlockData == nil {
+		log.Println("cannot land write, block data is nil")
 	}
+	index := fs.currentBlockData.Index
+	blockMeta := fs.meta.Blocks[index]
+	hostIds := blockMeta.Hosts
+	for _, hostId := range hostIds {
+		host := fs.filesystem.Network.BFTRaft.GetHostNTXN(hostId)
+		if host == nil {
+			log.Println("cannot find host:", hostId)
+		}
+		client := serv.GetPeerRPC(host.ServerAddr)
+		wr, err := client.SetBlock(context.Background(), fs.currentBlockData)
+		if err != nil {
+			log.Println("cannot set block to", hostId, err)
+		} else {
+			if wr.Succeed == true {
+				log.Println("set block succeed")
+			} else {
+				log.Println("set block failed")
+			}
+		}
+	}
+	fs.currentBlockDirty = false
 }
 
 func (fs *PCFS) Mkdir(path string) error {
